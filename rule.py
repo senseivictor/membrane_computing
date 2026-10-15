@@ -1,30 +1,39 @@
 class Rule:
     """
-    Represents an evolution/communication rule:
-    LHS (consumed objects) -> RHS (produced objects) [target]
-    Target can be: 'here', 'out' (to parent), or membrane label.
+    Represents an evolution/communication rule with verbose tracing.
     """
-    def __init__(self, lhs, rhs, target='here', condition=None):
-        self.lhs = lhs  # dict of {obj: count}
-        self.rhs = rhs  # dict of {obj: count}
-        self.target = target  # 'here', 'out', or specific child/parent label
-        self.condition = condition  # Optional lambda function for advanced guards
+    def __init__(self, name, lhs, rhs, target='here', condition=None):
+        self.name = name  # Human-readable name for logging
+        self.lhs = lhs    # Consumption pattern
+        self.rhs = rhs    # Production pattern
+        self.target = target  # 'here', 'out', or specific membrane label
+        self.condition = condition  # Optional guard function
 
     def is_applicable(self, membrane):
+        # 1. Check if multiset requirements (LHS) are met
         for obj, count in self.lhs.items():
             if membrane.get_count(obj) < count:
                 return False
+        
+        # 2. Check optional custom guard condition
         if self.condition and not self.condition(membrane):
             return False
+            
         return True
 
     def apply(self, membrane, system):
+        print(f"\n⚡ [RULE FIRED: '{self.name}'] in Membrane '{membrane.label}'")
+        print(f"   - Consuming LHS objects: {self.lhs}")
+        
         # Consume LHS objects
         for obj, count in self.lhs.items():
             membrane.remove_object(obj, count)
         
-        # Produce RHS objects to target destination
+        # Resolve target destination
         target_membrane = self.resolve_target(membrane, system)
+        print(f"   - Producing RHS objects: {self.rhs} -> Target: '{target_membrane.label}'")
+        
+        # Produce RHS objects
         for obj, count in self.rhs.items():
             target_membrane.add_object(obj, count)
 

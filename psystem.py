@@ -17,20 +17,34 @@ class PSystem:
                 return res
         return None
 
-    def step(self):
-        """Execute one step of maximally parallel rule application."""
+    def step(self, step_num):
+        print(f"\n----------------------------------------")
+        print(f"🔄 [STEP {step_num}] Beginning parallel rule evaluation cycle...")
+        print(f"----------------------------------------")
+        
         applied_any = False
+        # Iterate over all rules registered in the system
         for mem_label, rule in self.rules:
             mem = self.find_membrane(mem_label)
-            if mem and rule.is_applicable(mem):
-                rule.apply(mem, self)
-                applied_any = True
+            if mem:
+                print(f"   Checking Rule '{rule.name}' inside Membrane '{mem_label}'...")
+                if rule.is_applicable(mem):
+                    print(f"   ✅ Rule '{rule.name}' is APPLICABLE.")
+                    rule.apply(mem, self)
+                    applied_any = True
+                else:
+                    print(f"   ❌ Rule '{rule.name}' is NOT applicable (missing objects or guard failed).")
+            else:
+                print(f"   ⚠️ Warning: Membrane '{mem_label}' not found for rule '{rule.name}'.")
+                
         return applied_any
 
-    def run(self, max_steps=100):
-        step_count = 0
-        while step_count < max_steps:
-            progress = self.step()
+    def run(self, max_steps=10):
+        print("🚀 P System execution started.")
+        step_count = 1
+        while step_count <= max_steps:
+            progress = self.step(step_count)
             if not progress:
+                print(f"\n🛑 [HALT] No rules were fired in Step {step_count}. P System has reached a halting configuration.")
                 break
             step_count += 1
