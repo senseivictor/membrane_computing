@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulare Dinamică 2D - P-Systems Membrane Division</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #121826;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: #38bdf8;
+            font-size: 24px;
+        }
+
+        p.subtitle {
+            margin-bottom: 18px;
+            color: #94a3b8;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .config-panel {
+            background: #1e293b;
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .config-panel label {
+            font-size: 14px;
+            color: #cbd5e1;
+            font-weight: 600;
+        }
+
+        .config-panel input[type="text"] {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #38bdf8;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 280px;
+            outline: none;
+        }
+
+        .config-panel input[type="text"]:focus {
+            border-color: #38bdf8;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 15px;
+            background: #1e293b;
+            padding: 12px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        button {
+            background: #0284c7;
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: #0369a1;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.apply {
+            background: #10b981;
+        }
+
+        button.apply:hover {
+            background: #059669;
+        }
+
+        button.reset {
+            background: #e11d48;
+        }
+
+        button.reset:hover {
+            background: #be123c;
+        }
+
+        .status-panel {
+            background: #1e293b;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: #f1f5f9;
+            border-left: 4px solid #38bdf8;
+            max-width: 1100px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .canvas-container {
+            width: 100%;
+            max-width: 1100px;
+            overflow-x: auto;
+            background: #0f172a;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            display: block;
+            background: #0f172a;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Simularea Diviziunii Celulare 2D (Sistem P)</h1>
+    <p class="subtitle">Adaugă propriile tale obiecte și vezi cum se generează arborele complet de combinații</p>
+
+    <!-- Panou Configurare Obiecte -->
+    <div class="config-panel">
+        <label for="inputObiecte">Obiecte (separate prin virgulă):</label>
+        <input type="text" id="inputObiecte" value="Chei, Telefon, Laptop" placeholder="ex: A, B, C, D">
+        <button class="apply" onclick="setareObiecteNoi()">Aplică Obiectele</button>
+    </div>
+
+    <!-- Panou Control Pas cu Pas -->
+    <div class="controls">
+        <button id="btnNext" onclick="urmatorulPas()">Pasul Următor ➔</button>
+        <button class="reset" onclick="resetare()">Resetare</button>
+    </div>
+
+    <!-- Stare Curentă -->
+    <div class="status-panel" id="statusText">
+        Se încarcă...
+    </div>
+
+    <!-- Ecran 2D -->
+    <div class="canvas-container">
+        <canvas id="pSystemCanvas" width="1100" height="600"></canvas>
+    </div>
+
+    <script>
+        let obiecteInitial = [];
+        let pasCurent = 0;
+        let nivele = [];
+
+        class Celula2D {
+            constructor(ales, ramase, parentX = null, parentY = null) {
+                this.alese = [...ales];
+                this.ramase = [...ramase];
+                this.x = 0;
+                this.y = 0;
+                this.parentX = parentX;
+                this.parentY = parentY;
+                this.radius = 40;
+            }
+        }
+
+        function setareObiecteNoi() {
+            const rawInput = document.getElementById("inputObiecte").value;
+            const lista = rawInput.split(',')
+                                 .map(item => item.trim())
+                                 .filter(item => item.length > 0);
+
+            if (lista.length === 0) {
+                alert("Introdu cel puțin un obiect!");
+                return;
+            }
+
+            if (lista.length > 5) {
+                alert("Pentru o vizualizare clară în 2D, se recomandă maxim 4-5 obiecte (2^5 = 32 celule).");
+            }
+
+            obiecteInitial = lista;
+            init();
+        }
+
+        function init() {
+            pasCurent = 0;
+            nivele = [];
+            nivele.push([new Celula2D([], obiecteInitial)]);
+            calculeazaPozitii();
+            deseneaza();
+            actualizeazaStatus();
+        }
+
+        function urmatorulPas() {
+            if (pasCurent >= obiecteInitial.length) return;
+
+            const celuleNivelAnterior = nivele[pasCurent];
+            const celuleNivelNou = [];
+            const obiectDecis = obiecteInitial[pasCurent];
+
+            celuleNivelAnterior.forEach(celula => {
+                const intrebariNoi = celula.ramase.slice(1);
+                
+                // Celula 1: Am luat obiectul
+                const c1 = new Celula2D(
+                    [...celula.alese, obiectDecis],
+                    intrebariNoi,
+                    celula.x,
+                    celula.y
+                );
+
+                // Celula 2: Am ignorat obiectul
+                const c2 = new Celula2D(
+                    [...celula.alese],
+                    intrebariNoi,
+                    celula.x,
+                    celula.y
+                );
+
+                celuleNivelNou.push(c1, c2);
+            });
+
+            nivele.push(celuleNivelNou);
+            pasCurent++;
+            calculeazaPozitii();
+            deseneaza();
+            actualizeazaStatus();
+        }
+
+        function resetare() {
+            init();
+        }
+
+        function calculeazaPozitii() {
+            const canvas = document.getElementById("pSystemCanvas");
+            const width = canvas.width;
+            const height = canvas.height;
+
+            const totalNivele = obiecteInitial.length + 1;
+            const stepX = width / totalNivele;
+
+            nivele.forEach((celulePeNivel, idxNivel) => {
+                const x = stepX * idxNivel + stepX / 2;
+                const totalCelule = celulePeNivel.length;
+                const stepY = height / (totalCelule + 1);
+
+                celulePeNivel.forEach((celula, idxCelula) => {
+                    celula.x = x;
+                    celula.y = stepY * (idxCelula + 1);
+                    
+                    // Scalare dinamică a cercurilor în funcție de numărul de celule afișate
+                    if (totalCelule > 16) celula.radius = 16;
+                    else if (totalCelule > 8) celula.radius = 24;
+                    else if (totalCelule > 4) celula.radius = 32;
+                    else celula.radius = 42;
+                });
+            });
+        }
+
+        function deseneaza() {
+            const canvas = document.getElementById("pSystemCanvas");
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Conexiunile dintre celulele tată și celulele fiice
+            for (let i = 1; i < nivele.length; i++) {
+                nivele[i].forEach(celula => {
+                    ctx.beginPath();
+                    ctx.moveTo(celula.parentX, celula.parentY);
+                    ctx.lineTo(celula.x, celula.y);
+                    ctx.strokeStyle = "#334155";
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                });
+            }
+
+            // 2. Desenează Cercurile (Membranele)
+            nivele.forEach((celulePeNivel, idxNivel) => {
+                const esteNivelActiv = (idxNivel === pasCurent);
+
+                celulePeNivel.forEach(celula => {
+                    ctx.beginPath();
+                    ctx.arc(celula.x, celula.y, celula.radius, 0, Math.PI * 2);
+                    
+                    if (esteNivelActiv) {
+                        ctx.fillStyle = "#1e293b";
+                        ctx.strokeStyle = "#38bdf8";
+                        ctx.lineWidth = 2.5;
+                    } else {
+                        ctx.fillStyle = "#0f172a";
+                        ctx.strokeStyle = "#475569";
+                        ctx.lineWidth = 1.5;
+                    }
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Font scalabil în funcție de raza cercului
+                    const r = celula.radius;
+
+                    if (r >= 24) {
+                        // Afișează conținut detaliat
+                        ctx.fillStyle = "#94a3b8";
+                        ctx.font = `${Math.max(8, r * 0.24)}px sans-serif`;
+                        ctx.textAlign = "center";
+                        ctx.fillText(`Membrană`, celula.x, celula.y - r * 0.35);
+
+                        ctx.fillStyle = "#38bdf8";
+                        ctx.font = `bold ${Math.max(8, r * 0.26)}px sans-serif`;
+                        const textAlese = celula.alese.length > 0 ? celula.alese.join("+") : "GOL";
+                        ctx.fillText(textAlese, celula.x, celula.y + 3);
+
+                        if (celula.ramase.length > 0) {
+                            ctx.fillStyle = "#f59e0b";
+                            ctx.font = `${Math.max(7, r * 0.20)}px sans-serif`;
+                            ctx.fillText(`? [${celula.ramase.join(",")}]`, celula.x, celula.y + r * 0.45);
+                        }
+                    } else {
+                        // Pentru dimensiuni foarte mici (multe celule)
+                        ctx.fillStyle = "#38bdf8";
+                        ctx.font = `bold ${Math.max(7, r * 0.45)}px sans-serif`;
+                        ctx.textAlign = "center";
+                        const shortText = celula.alese.length > 0 ? celula.alese.map(s => s[0]).join("") : "∅";
+                        ctx.fillText(shortText, celula.x, celula.y + 3);
+                    }
+                });
+            });
+        }
+
+        function actualizeazaStatus() {
+            const btnNext = document.getElementById("btnNext");
+            const statusText = document.getElementById("statusText");
+
+            if (pasCurent < obiecteInitial.length) {
+                const obiectDecis = obiecteInitial[pasCurent];
+                statusText.innerHTML = `<strong>Pasul ${pasCurent}:</strong> Decizie pentru obiectul <strong>"${obiectDecis}"</strong> | Celule la acest nivel: <strong>${nivele[pasCurent].length}</strong>`;
+                btnNext.disabled = false;
+            } else {
+                statusText.innerHTML = `<strong>COMPLET!</strong> S-au generat toate cele <strong>${nivele[pasCurent].length} celule paralele ($2^{${obiecteInitial.length}}$)</strong>. Toate combinațiile unice au fost acoperite.`;
+                btnNext.disabled = true;
+            }
+        }
+
+        window.onload = setareObiecteNoi;
+    </script>
+</body>
+</html>
