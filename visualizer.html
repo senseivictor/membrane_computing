@@ -370,10 +370,14 @@ const SEMANTIC = {
   color: {
     eval:     '#a855f7',
     solution: '#eab308',
+    KILL:     '#ef4444',
+    SAFE:     '#10b981',
   },
   label: {
     eval:     '⚖',
     solution: '★',
+    KILL:     '☠',
+    SAFE:     '🛡',
   }
 };
 
@@ -428,7 +432,7 @@ function objLabel(key) {
 // Particle size: property tokens are smaller than choice/semantic markers
 function objRadius(key) {
   if (key.startsWith('yes_') || key.startsWith('no_')) return 13;
-  if (key === 'eval' || key === 'solution')             return 13;
+  if (key === 'eval' || key === 'solution' || key === 'KILL' || key === 'SAFE') return 13;
   if (key.startsWith('d_'))                            return 12;
   return 8;  // property tokens — small, like atoms
 }
@@ -503,7 +507,9 @@ function runSimulationFromConfig(items, constraints) {
     parent: null,
     children: [],
     objects: {},
-    alive: true
+    alive: true,
+    slotIdx: 0,
+    slotCount: 1
   };
   const gen0 = {
     id: nextId("gen"),
@@ -511,28 +517,34 @@ function runSimulationFromConfig(items, constraints) {
     parent: skin,
     children: [],
     objects: { "d_1": 1 },
-    alive: true
+    alive: true,
+    slotIdx: 0,
+    slotCount: 1
   };
   skin.children.push(gen0);
 
   const n = items.length;
   const allProps = Array.from(new Set(items.flatMap(it => Object.keys(it)))).sort();
 
-  // Snapshot helper
+  // Snapshot helper — preserves slotIdx, slotCount and alive status
   function snapshotTree(node) {
     return {
       id: node.id,
       label: node.label,
+      slotIdx: node.slotIdx !== undefined ? node.slotIdx : 0,
+      slotCount: node.slotCount !== undefined ? node.slotCount : 1,
+      alive: node.alive !== false,
       dna: node.dna ? [...node.dna] : (typeof extractDna === 'function' ? extractDna(node) : []),
       objects: Object.assign({}, node.objects),
-      children: node.children.filter(c => c.alive).map(snapshotTree)
+      children: (node.children || []).map(snapshotTree)
     };
   }
 
   const history = [];
-  // Step 0
+  // Step 0: Initial State
   history.push({
     step: 0,
+    title: "Initial State",
     events: [],
     tree: snapshotTree(skin)
   });
@@ -557,6 +569,7 @@ function runSimulationFromConfig(items, constraints) {
 
     // All currently living gen membranes containing the trigger object
     const living = getLiving(skin).filter(m => m.alive && m.label === "gen" && (m.objects[trigger] || 0) >= 1);
+    const nextSlotCount = Math.pow(2, num);
 
     living.forEach(mem => {
       // Base objects minus trigger
@@ -581,6 +594,8 @@ function runSimulationFromConfig(items, constraints) {
       const daDna = pDna.concat([{ item: num, choice: true, label: `✓${num}` }]);
       const dbDna = pDna.concat([{ item: num, choice: false, label: `✗${num}` }]);
 
+      const pSlot = mem.slotIdx !== undefined ? mem.slotIdx : 0;
+
       const da = {
         id: nextId("gen"),
         label: "gen",
@@ -588,6 +603,8 @@ function runSimulationFromConfig(items, constraints) {
         children: [],
         objects: aObjs,
         dna: daDna,
+        slotIdx: pSlot * 2,
+        slotCount: nextSlotCount,
         alive: true
       };
       const db = {
@@ -597,6 +614,8 @@ function runSimulationFromConfig(items, constraints) {
         children: [],
         objects: bObjs,
         dna: dbDna,
+        slotIdx: pSlot * 2 + 1,
+        slotCount: nextSlotCount,
         alive: true
       };
 
@@ -620,54 +639,113 @@ function runSimulationFromConfig(items, constraints) {
 
     history.push({
       step: num,
+      title: `Division (Item ${num})`,
       events: events,
       tree: snapshotTree(skin)
     });
   }
 
-  // Phase 2: Evaluation step
-  const evalStepNum = n + 1;
-  const evalEvents = [];
+  // Phase 2: Enzyme Binding step (Threshold lock w^(C+1) + eval -> KILL)
+  const bindStepNum = n + 1;
+  const bindEvents = [];
   const evalLiving = getLiving(skin).filter(m => m.alive && m.label === "gen" && (m.objects["eval"] || 0) >= 1);
+  const maxWeight = constraints.weight?.max != null ? constraints.weight.max : 5;
+  const threshWeight = maxWeight + 1;
 
   evalLiving.forEach(mem => {
-    // Check constraints against unary multiset token counts
-    let isValid = true;
+    delete mem.objects["eval"];
+
+    // Evaluate constraints
+    let isViolated = false;
+    let failReason = "";
     for (const [prop, cond] of Object.entries(constraints)) {
       const cnt = mem.objects[prop] || 0;
-      if (cond.max != null && cnt > cond.max) isValid = false;
-      if (cond.min != null && cnt < cond.min) isValid = false;
+      if (cond.max != null && cnt > cond.max) {
+        isViolated = true;
+        failReason = `${prop} (${cnt}) > ${cond.max}`;
+        break;
+      }
+      if (cond.min != null && cnt < cond.min) {
+        isViolated = true;
+        failReason = `${prop} (${cnt}) < ${cond.min}`;
+        break;
+      }
     }
 
-    if (isValid) {
-      delete mem.objects["eval"];
-      skin.objects["solution"] = (skin.objects["solution"] || 0) + 1;
-      evalEvents.push({
+    if (isViolated) {
+      // Threshold enzyme stoichiometric lock binds: w^6 + eval -> KILL
+      mem.objects["KILL"] = 1;
+      bindEvents.push({
         event: "rule_fired",
-        rule: "Accept_Valid_Subset",
+        rule: `Enzyme_Lock_Bound (weight${threshWeight} + eval → KILL)`,
         membrane_id: mem.id,
         membrane_label: mem.label,
         consumed: { eval: 1 },
-        produced: { solution: 1 },
-        target: "out"
+        produced: { KILL: 1 },
+        target: "here",
+        description: `Threshold lock bound: ${failReason}. Marked for destruction.`
       });
     } else {
-      delete mem.objects["eval"];
-      evalEvents.push({
+      // Stoichiometric lock fails to form (not enough tokens): eval -> SAFE
+      mem.objects["SAFE"] = 1;
+      bindEvents.push({
         event: "rule_fired",
-        rule: "Discard_Invalid_Subset",
+        rule: "Enzyme_Unbound_Safe (eval → SAFE)",
         membrane_id: mem.id,
         membrane_label: mem.label,
         consumed: { eval: 1 },
-        produced: {},
-        target: "here"
+        produced: { SAFE: 1 },
+        target: "here",
+        description: `Threshold lock failed to form (${mem.objects.weight || 0} ≤ ${maxWeight}). Cell is safe.`
       });
     }
   });
 
   history.push({
-    step: evalStepNum,
-    events: evalEvents,
+    step: bindStepNum,
+    title: "Enzyme Binding",
+    events: bindEvents,
+    tree: snapshotTree(skin)
+  });
+
+  // Phase 3: Destruction of Cells (Overweight cells dissolve delta; safe cells emit solution)
+  const destrStepNum = n + 2;
+  const destrEvents = [];
+  const actionLiving = getLiving(skin).filter(m => m.alive && m.label === "gen");
+
+  actionLiving.forEach(mem => {
+    if (mem.objects["KILL"]) {
+      delete mem.objects["KILL"];
+      mem.alive = false; // Destroyed & deleted from interface
+      destrEvents.push({
+        event: "membrane_dissolved",
+        membrane_id: mem.id,
+        membrane_label: mem.label,
+        rule: "Cell_Destruction (KILL → δ)",
+        objects_released: Object.assign({}, mem.objects),
+        description: "Overweight cell dissolved (dissolution δ) and deleted from interface."
+      });
+    } else if (mem.objects["SAFE"]) {
+      delete mem.objects["SAFE"];
+      mem.objects["solution"] = 1;
+      skin.objects["solution"] = (skin.objects["solution"] || 0) + 1;
+      destrEvents.push({
+        event: "rule_fired",
+        rule: "Accept_Valid_Subset (SAFE → solution_out)",
+        membrane_id: mem.id,
+        membrane_label: mem.label,
+        consumed: { SAFE: 1 },
+        produced: { solution: 1 },
+        target: "out",
+        description: "Valid knapsack subset accepted. Solution emitted to skin."
+      });
+    }
+  });
+
+  history.push({
+    step: destrStepNum,
+    title: "Cell Destruction",
+    events: destrEvents,
     tree: snapshotTree(skin)
   });
 
@@ -692,19 +770,35 @@ function runSimulationFromConfig(items, constraints) {
     });
   }
   rulesMeta.push({
-    name: "Accept_Valid_Subset",
+    name: `Enzyme_Lock_Bound (weight${threshWeight} + eval → KILL)`,
     type: "evolution",
-    lhs: { eval: 1 },
-    rhs: { solution: 1 },
-    target: "out",
+    lhs: { eval: 1, weight: threshWeight },
+    rhs: { KILL: 1, weight: threshWeight },
+    target: "here",
     applies_to: "gen"
   });
   rulesMeta.push({
-    name: "Discard_Invalid_Subset",
+    name: "Enzyme_Unbound_Safe (eval → SAFE)",
     type: "evolution",
     lhs: { eval: 1 },
+    rhs: { SAFE: 1 },
+    target: "here",
+    applies_to: "gen"
+  });
+  rulesMeta.push({
+    name: "Cell_Destruction (KILL → δ)",
+    type: "dissolution",
+    lhs: { KILL: 1 },
     rhs: {},
     target: "here",
+    applies_to: "gen"
+  });
+  rulesMeta.push({
+    name: "Accept_Valid_Subset (SAFE → solution_out)",
+    type: "evolution",
+    lhs: { SAFE: 1 },
+    rhs: { solution: 1 },
+    target: "out",
     applies_to: "gen"
   });
 
@@ -1002,7 +1096,10 @@ function buildLogPanel() {
     const hdr = document.createElement('div');
     hdr.className = 'log-step' + (si===0?' active':'');
     hdr.id = `ls${si}`;
-    hdr.textContent = si === 0 ? '⚙ Initial State' : `⟳ Step ${step.step}`;
+    let title = `⟳ Step ${step.step}`;
+    if (si === 0) title = '⚙ Initial State';
+    else if (step.title) title = `⟳ Step ${step.step}: ${step.title}`;
+    hdr.textContent = title;
     hdr.addEventListener('click', () => jumpToStep(si));
     body.appendChild(hdr);
 
@@ -1014,13 +1111,25 @@ function buildLogPanel() {
           <span class="sub">A: ${fmtObjs(ev.daughter_a_objects)}</span>
           <span class="sub">B: ${fmtObjs(ev.daughter_b_objects)}</span>`;
       } else if (ev.event === 'rule_fired') {
-        el.className = 'log-ev rule';
-        el.innerHTML = `⚡ <b>${ev.rule}</b>
-          <span class="sub">${fmtObjs(ev.consumed)} → ${fmtObjs(ev.produced)} [${ev.target}]</span>`;
+        if (ev.rule.includes('Enzyme_Lock_Bound') || (ev.produced && ev.produced.KILL)) {
+          el.className = 'log-ev diss';
+          el.innerHTML = `🔒 <b>ENZYME BOUND (KILL)</b> [${ev.membrane_label}]
+            <span class="sub">${fmtObjs(ev.consumed)} → ${fmtObjs(ev.produced)}</span>
+            ${ev.description ? `<span class="sub" style="color:#ef4444">${ev.description}</span>` : ''}`;
+        } else if (ev.rule.includes('Enzyme_Unbound_Safe') || (ev.produced && ev.produced.SAFE)) {
+          el.className = 'log-ev div';
+          el.innerHTML = `🛡 <b>ENZYME UNBOUND (SAFE)</b> [${ev.membrane_label}]
+            <span class="sub">${fmtObjs(ev.consumed)} → ${fmtObjs(ev.produced)}</span>
+            ${ev.description ? `<span class="sub" style="color:#10b981">${ev.description}</span>` : ''}`;
+        } else {
+          el.className = 'log-ev rule';
+          el.innerHTML = `⚡ <b>${ev.rule}</b>
+            <span class="sub">${fmtObjs(ev.consumed)} → ${fmtObjs(ev.produced)} [${ev.target}]</span>`;
+        }
       } else if (ev.event === 'membrane_dissolved') {
         el.className = 'log-ev diss';
-        el.innerHTML = `💥 <b>DISSOLVE</b> [${ev.membrane_label}]
-          <span class="sub">released: ${fmtObjs(ev.objects_released)}</span>`;
+        el.innerHTML = `💥 <b>CELL DESTROYED (δ)</b> [${ev.membrane_label}]
+          <span class="sub">${ev.description || 'Dissolved and deleted from interface'}</span>`;
       }
       body.appendChild(el);
     });
@@ -1053,23 +1162,26 @@ function computeLayout(si) {
 }
 
 function layoutNode(node, cx, cy, r, pos) {
-  pos[node.id] = { x: cx, y: cy, r, label: node.label, objects: node.objects };
+  pos[node.id] = { x: cx, y: cy, r, label: node.label, objects: node.objects, alive: node.alive !== false };
   const ch = (node.children || []).filter(c => c);
   if (!ch.length) return;
-  const N = ch.length;
+
+  // Determine fixed ring slots count: use child's slotCount if available
+  const ringSlots = (ch[0] && ch[0].slotCount) ? ch[0].slotCount : ch.length;
   let childR, arrR;
-  if (N === 1) {
+  if (ringSlots === 1) {
     childR = r * 0.52;
     arrR   = 0;
   } else {
-    const sinPN = Math.sin(Math.PI / N);
+    const sinPN = Math.sin(Math.PI / ringSlots);
     childR = Math.min(r * 0.9 * sinPN / (1 + sinPN), r * 0.42);
     arrR   = r * 0.9 - childR;
   }
   ch.forEach((child, i) => {
-    const angle = (2*Math.PI*i/N) - Math.PI/2;
-    const px = cx + arrR * Math.cos(angle);
-    const py = cy + arrR * Math.sin(angle);
+    const slot = (child.slotIdx !== undefined) ? child.slotIdx : i;
+    const angle = (2 * Math.PI * slot / ringSlots) - Math.PI / 2;
+    const px = (ringSlots === 1) ? cx : cx + arrR * Math.cos(angle);
+    const py = (ringSlots === 1) ? cy : cy + arrR * Math.sin(angle);
     layoutNode(child, px, py, childR, pos);
   });
 }
@@ -1210,7 +1322,7 @@ function syncPhysicsToState(si) {
   // Collect all living memIds from tree
   const liveIds = new Set();
   function collectIds(node) {
-    liveIds.add(node.id);
+    if (node.alive !== false) liveIds.add(node.id);
     (node.children||[]).forEach(collectIds);
   }
   collectIds(tree);
@@ -1439,11 +1551,14 @@ function renderAll() {
 
   // ── Draw child membranes ───────────────────────────────────────────────
   function drawTree(node, depth=0) {
+    if (node.alive === false) return; // Deleted from interface
     if (node.id === root.id) { (node.children||[]).forEach(c=>drawTree(c, depth+1)); return; }
     const pos = layout[node.id]; if (!pos) return;
     const { x, y, r } = pos;
 
     const objs = node.objects || {};
+    const hasKill = objs.KILL > 0;
+    const hasSafe = objs.SAFE > 0;
     const hasEval = objs.eval > 0;
     const hasSol  = objs.solution > 0;
     const isDiv   = divIds.has(node.id);
@@ -1452,11 +1567,13 @@ function renderAll() {
     const isHov   = node.id === hoverMemId;
 
     let border='#21293a', fill='#0d1117', glow=null, glow_a=0.3, lw=1.5;
-    if (isDiv)  { border='#22c55e'; fill='#0a1f0a'; glow='#22c55e'; lw=2.5; }
+    if (hasKill)       { border='#ef4444'; fill='#200a0a'; glow='#ef4444'; glow_a=0.55; lw=2.5; }
+    else if (hasSafe)  { border='#10b981'; fill='#071c14'; glow='#10b981'; glow_a=0.35; lw=2.0; }
+    else if (isDiv)    { border='#22c55e'; fill='#0a1f0a'; glow='#22c55e'; lw=2.5; }
     else if (hasEval)  { border='#a855f7'; fill='#120a1f'; glow='#a855f7'; }
     else if (hasSol)   { border='#eab308'; fill='#1a1500'; glow='#eab308'; }
     else if (isRule)   { border='#3b82f6'; fill='#0a1225'; glow='#3b82f6'; glow_a=0.25; }
-    else { border='#1e3a5f'; fill='#080e18'; }
+    else               { border='#1e3a5f'; fill='#080e18'; }
 
     if (isSel) { border='#f59e0b'; glow='#f59e0b'; glow_a=0.5; lw=2.5; }
     else if (isHov) { glow=border; glow_a=0.2; }
@@ -1468,7 +1585,7 @@ function renderAll() {
     const ph = physics[node.id];
     if (ph) ph.particles.forEach(p => { if (p.alpha>0.01) p.draw(ctx); });
 
-    // Draw objects in skin if skin has objects (solutions)
+    // Draw child membranes recursively
     (node.children||[]).forEach(c => drawTree(c, depth+1));
   }
 
@@ -1510,6 +1627,8 @@ function drawLegend() {
     { color:'#1e3a5f',  label:'child membrane' },
     { color:'#22c55e',  label:'dividing cell' },
     { color:'#a855f7',  label:'evaluating' },
+    { color:'#ef4444',  label:'enzyme bound (KILL)' },
+    { color:'#10b981',  label:'safe cell (≤ capacity)' },
     { color:'#eab308',  label:'solution found' },
     { color:'#f59e0b',  label:'selected' },
   ];
@@ -1562,8 +1681,10 @@ function goToStep(si, animated=true) {
   si = Math.max(0, Math.min(simData.steps.length-1, si));
   curStep = si;
   document.getElementById('scrubber').value = si;
+  const sObj = simData.steps[si];
+  const titlePart = sObj && sObj.title ? ` · ${sObj.title}` : '';
   document.getElementById('stepLabel').textContent =
-    `Step ${si} / ${simData.steps.length-1}`;
+    `Step ${si} / ${simData.steps.length-1}${titlePart}`;
   highlightLogStep(si);
 
   if (animated && si > 0) {
@@ -1626,6 +1747,7 @@ function hitTestMem(mx, my) {
   let best = null, bestR = Infinity;
 
   function check(node) {
+    if (node.alive === false) return; // Do not hit-test destroyed cells
     if (node.id === root.id) { (node.children||[]).forEach(check); return; }
     const pos = layout[node.id]; if (!pos) return;
     const d = Math.hypot(mx-pos.x, my-pos.y);

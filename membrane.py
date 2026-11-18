@@ -11,13 +11,15 @@ def _next_id(label):
 
 
 class Membrane:
-    def __init__(self, label, parent=None):
-        self.label   = label
-        self.mem_id  = _next_id(label)
-        self.parent  = parent
-        self.children = []
-        self.objects  = {}
-        self.alive    = True
+    def __init__(self, label, parent=None, slot_idx=0, slot_count=1):
+        self.label      = label
+        self.mem_id     = _next_id(label)
+        self.parent     = parent
+        self.children   = []
+        self.objects    = {}
+        self.alive      = True
+        self.slot_idx   = slot_idx
+        self.slot_count = slot_count
 
     # ── Multiset ──────────────────────────────────────────────────────────────
 
@@ -67,18 +69,19 @@ class Membrane:
         Returns (daughter_a, daughter_b).
         """
         def _clone(src, new_parent):
-            m = Membrane(src.label, new_parent)
+            m = Membrane(src.label, new_parent, slot_idx=src.slot_idx, slot_count=src.slot_count)
             m.objects = dict(src.objects)
             for child in src.children:
                 m.add_child(_clone(child, m))
             return m
 
-        da = Membrane(self.label, self.parent)
+        next_slot_count = self.slot_count * 2
+        da = Membrane(self.label, self.parent, slot_idx=self.slot_idx * 2, slot_count=next_slot_count)
         da.objects = dict(objects_a)
         for child in self.children:
             da.add_child(_clone(child, da))
 
-        db = Membrane(self.label, self.parent)
+        db = Membrane(self.label, self.parent, slot_idx=self.slot_idx * 2 + 1, slot_count=next_slot_count)
         db.objects = dict(objects_b)
         for child in self.children:
             db.add_child(_clone(child, db))
@@ -114,9 +117,12 @@ class Membrane:
         return {
             "id": self.mem_id,
             "label": self.label,
+            "slotIdx": getattr(self, "slot_idx", 0),
+            "slotCount": getattr(self, "slot_count", 1),
+            "alive": self.alive,
             "dna": self._get_dna(),
             "objects": dict(self.objects),
-            "children": [c.snapshot() for c in self.children if c.alive]
+            "children": [c.snapshot() for c in self.children]
         }
 
     def __repr__(self):
