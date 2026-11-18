@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P-System Membrane Visualizer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Consolas,sans-serif}
+:root{
+  --bg:#08090f;--surface:#0d1117;--surface2:#161b22;--border:#21293a;
+  --blue:#3b82f6;--green:#22c55e;--red:#ef4444;--purple:#a855f7;
+  --amber:#f59e0b;--teal:#14b8a6;--pink:#ec4899;--slate:#64748b;
+  --text:#e2e8f0;--muted:#64748b;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
+
+/* ── Header ── */
+header{
+  height:52px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 16px;flex-shrink:0;
+}
+header h1{font-size:15px;color:var(--blue);white-space:nowrap;margin-right:4px}
+header h1 span{color:var(--muted);font-size:12px;font-weight:400}
+.sep{width:1px;height:28px;background:var(--border);flex-shrink:0}
+
+.hbtn{
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;
+  transition:.15s;white-space:nowrap;
+}
+.hbtn:hover:not(:disabled){background:#1e2d40;border-color:var(--blue);color:var(--blue)}
+.hbtn:disabled{opacity:.35;cursor:not-allowed}
+.hbtn.primary{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+.hbtn.primary:hover:not(:disabled){background:#2563eb}
+.hbtn.danger{background:#991b1b;border-color:#991b1b;color:#fff}
+.hbtn.danger:hover:not(:disabled){background:#dc2626}
+
+.speed-wrap{display:flex;align-items:center;gap:6px;margin-left:auto}
+.speed-wrap label{font-size:12px;color:var(--muted)}
+input[type=range]{accent-color:var(--blue);width:100px}
+#speedVal{font-size:12px;color:var(--blue);min-width:36px;text-align:right}
+
+.file-btn{font-size:12px;color:var(--muted);cursor:pointer}
+.file-btn input{display:none}
+
+/* ── Layout ── */
+.workspace{display:flex;height:calc(100vh - 52px - 46px);overflow:hidden}
+
+/* ── Event log ── */
+.log-col{
+  width:240px;min-width:180px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.panel-title{
+  padding:8px 12px;font-size:11px;color:var(--muted);letter-spacing:.08em;
+  text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.log-body{flex:1;overflow-y:auto;padding:4px}
+.log-body::-webkit-scrollbar{width:4px}
+.log-body::-webkit-scrollbar-track{background:transparent}
+.log-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.log-step{
+  font-size:11px;font-weight:700;color:var(--blue);padding:6px 8px 3px;
+  margin-top:4px;cursor:pointer;border-radius:4px;transition:.1s;
+}
+.log-step:hover{background:#1e2d4044}
+.log-step.active{background:#1e2d40;border-left:2px solid var(--blue)}
+.log-ev{
+  font-size:11px;padding:4px 8px 4px 14px;border-radius:4px;
+  margin:1px 0;line-height:1.45;
+}
+.log-ev.div{color:var(--green);border-left:2px solid #22c55e55;background:#16231344}
+.log-ev.rule{color:#93c5fd;border-left:2px solid #3b82f655;background:#1e2d4044}
+.log-ev.diss{color:var(--red);border-left:2px solid #ef444455;background:#2a111144}
+.log-ev .sub{color:var(--muted);font-size:10px;display:block;margin-top:1px}
+
+/* ── Canvas area ── */
+.canvas-col{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+canvas{display:block;width:100%;height:100%;cursor:default}
+
+/* ── Detail panel ── */
+.detail-col{
+  width:0;overflow:hidden;transition:width .3s ease;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;
+}
+.detail-col.open{width:300px}
+.detail-inner{width:300px;display:flex;flex-direction:column;height:100%}
+
+.detail-header{
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.detail-title{font-size:13px;color:var(--blue);font-weight:600}
+.close-btn{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:16px;padding:0 4px;
+}
+.close-btn:hover{color:var(--text)}
+
+.detail-canvas-wrap{padding:12px;border-bottom:1px solid var(--border);flex-shrink:0}
+#detailCanvas{display:block;width:100%;border-radius:8px;background:var(--surface2)}
+
+.detail-section{padding:10px 12px;border-bottom:1px solid var(--border)}
+.detail-section h3{font-size:11px;color:var(--muted);letter-spacing:.08em;
+                   text-transform:uppercase;margin-bottom:6px}
+.obj-row{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px}
+.obj-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.obj-name{flex:1;color:var(--text)}
+.obj-count{color:var(--muted);font-size:11px}
+
+.rule-row{font-size:11px;padding:3px 6px;border-radius:4px;margin:2px 0;
+          display:flex;align-items:center;gap:6px}
+.rule-row.ok{color:var(--green);background:#16231344}
+.rule-row.no{color:var(--muted);background:#1116244}
+
+.detail-scroll{flex:1;overflow-y:auto;padding:0}
+.detail-scroll::-webkit-scrollbar{width:4px}
+.detail-scroll::-webkit-scrollbar-thumb{background:var(--border)}
+
+.ev-hist{padding:10px 12px}
+.ev-hist h3{font-size:11px;color:var(--muted);letter-spacing:.08em;
+            text-transform:uppercase;margin-bottom:6px}
+.ev-item{font-size:11px;padding:3px 0;color:var(--muted);border-bottom:1px solid var(--border)11}
+
+/* ── Scrubber ── */
+.scrubber-bar{
+  height:46px;background:var(--surface);border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 16px;flex-shrink:0;
+}
+#scrubber{flex:1;accent-color:var(--blue)}
+#stepLabel{font-size:12px;color:var(--muted);white-space:nowrap;min-width:80px}
+
+/* ── Config Modal ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(8,9,15,0.78);
+  backdrop-filter:blur(6px);z-index:200;display:none;
+  align-items:center;justify-content:center;
+}
+.modal-overlay.open{display:flex}
+.modal-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;width:660px;max-width:95vw;max-height:90vh;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,0.7);
+}
+.modal-header{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;background:var(--surface2);
+}
+.modal-header h2{font-size:14px;color:var(--blue);font-weight:600;display:flex;align-items:center;gap:8px}
+.modal-body{
+  padding:18px 20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px;
+}
+.modal-body::-webkit-scrollbar{width:6px}
+.modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.modal-footer{
+  padding:12px 20px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);
+}
+.cfg-sec{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:12px 14px;
+}
+.cfg-sec-title{
+  font-size:11px;font-weight:700;color:#93c5fd;
+  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.cfg-table{
+  width:100%;border-collapse:collapse;font-size:12px;
+}
+.cfg-table th{
+  text-align:left;padding:6px 8px;color:var(--muted);border-bottom:1px solid var(--border);
+  font-weight:600;font-size:11px;
+}
+.cfg-table td{
+  padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle;
+}
+.cfg-table input[type="number"],.cfg-input{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:5px;font-size:12px;width:100%;outline:none;
+}
+.cfg-table input[type="number"]:focus,.cfg-input:focus{
+  border-color:var(--blue);
+}
+.btn-small{
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+  padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;transition:.15s;
+}
+.btn-small:hover{background:#1e2d40;border-color:var(--blue);color:var(--blue)}
+.del-row-btn{
+  background:none;border:none;color:var(--red);cursor:pointer;
+  padding:2px 6px;border-radius:4px;font-size:13px;
+}
+.del-row-btn:hover{background:#ef444422}
+.c-row{
+  display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;
+}
+.c-row select,.c-row input{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:5px;font-size:12px;outline:none;
+}
+.c-row select:focus,.c-row input:focus{border-color:var(--blue)}
+.preset-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.preset-btn{
+  background:var(--bg);border:1px solid var(--border);color:var(--muted);
+  padding:3px 8px;border-radius:12px;font-size:11px;cursor:pointer;transition:.15s;
+}
+.preset-btn:hover{color:var(--text);border-color:var(--blue)}
+.info-chip{
+  font-size:11px;color:var(--muted);background:var(--bg);padding:3px 8px;border-radius:4px;border:1px solid var(--border);
+}
+
+/* ── Tooltip ── */
+#tooltip{
+  position:fixed;pointer-events:none;background:#0d1117ee;border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);
+  display:none;z-index:100;max-width:200px;line-height:1.6;
+  backdrop-filter:blur(4px);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>P-System Membrane Visualizer <span>Membrane Computing — Păun 1998</span></h1>
+  <div class="sep"></div>
+
+  <button class="hbtn primary" id="btnOpenConfig" style="background:#059669;border-color:#059669;font-weight:600">⚡ Configure &amp; Run</button>
+  <button class="hbtn" id="btnQuickRun" title="Re-run live simulation with current objects">↺ Re-run</button>
+  <div class="sep"></div>
+
+  <label class="hbtn file-btn">
+    📂 Load JSON <input type="file" id="fileInput" accept=".json">
+  </label>
+  <div class="sep"></div>
+
+  <button class="hbtn primary" id="btnPlay">▶ Play</button>
+  <button class="hbtn" id="btnPause" disabled>⏸ Pause</button>
+  <button class="hbtn" id="btnPrev">◀ Prev</button>
+  <button class="hbtn" id="btnNext">Next ▶</button>
+  <button class="hbtn danger" id="btnReset">↺ Reset</button>
+
+  <div class="speed-wrap">
+    <label>Speed</label>
+    <input type="range" id="speedSlider" min="1" max="10" value="4">
+    <span id="speedVal">1.5s</span>
+  </div>
+</header>
+
+<div class="workspace">
+  <!-- Event log -->
+  <div class="log-col">
+    <div class="panel-title">Event Log</div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+
+  <!-- Main canvas -->
+  <div class="canvas-col">
+    <canvas id="mainCanvas"></canvas>
+  </div>
+
+  <!-- Detail panel (hidden until cell clicked) -->
+  <div class="detail-col" id="detailCol">
+    <div class="detail-inner">
+      <div class="detail-header">
+        <span class="detail-title" id="detailTitle">Membrane</span>
+        <button class="close-btn" id="detailClose">✕</button>
+      </div>
+      <div class="detail-canvas-wrap">
+        <canvas id="detailCanvas" width="276" height="200"></canvas>
+      </div>
+      <div class="detail-scroll" id="detailScroll">
+        <div class="detail-section" id="detailObjects"></div>
+        <div class="detail-section" id="detailRules"></div>
+        <div class="ev-hist" id="detailHistory"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrubber-bar">
+  <span id="stepLabel">Step — / —</span>
+  <input type="range" id="scrubber" min="0" max="0" value="0">
+</div>
+
+<div id="tooltip"></div>
+
+<!-- ── Config Modal ── -->
+<div class="modal-overlay" id="configModal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2><span>⚙</span> Configure Objects &amp; Simulation Parameters</h2>
+      <button class="close-btn" id="btnCloseConfig">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Items table -->
+      <div class="cfg-sec">
+        <div class="cfg-sec-title">
+          <span>Candidate Objects / Items (Knapsack)</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn-small" id="btnAddProp">+ Add Property</button>
+            <button class="btn-small" id="btnAddItem">+ Add Item</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="cfg-table" id="itemsTable">
+            <thead id="itemsTableHead"></thead>
+            <tbody id="itemsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Constraints section -->
+      <div class="cfg-sec">
+        <div class="cfg-sec-title">
+          <span>Filter Constraints (Evaluator Rules)</span>
+          <button class="btn-small" id="btnAddConstraint">+ Add Constraint</button>
+        </div>
+        <div id="constraintsList"></div>
+      </div>
+
+      <!-- Quick presets -->
+      <div class="cfg-sec">
+        <div class="cfg-sec-title"><span>Quick Presets</span></div>
+        <div class="preset-pills">
+          <button class="preset-btn" id="preset3">Standard (3 Items, W≤5)</button>
+          <button class="preset-btn" id="preset4">4 Items (16 Membranes, W≤6)</button>
+          <button class="preset-btn" id="presetMulti">3 Properties (W+Cost+Vol)</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="info-chip" id="cfgMemEstimate">3 items → 8 parallel membranes</div>
+      <div style="display:flex;gap:8px">
+        <button class="hbtn" id="btnCancelConfig">Cancel</button>
+        <button class="hbtn primary" id="btnRunConfig" style="background:#059669;border-color:#059669;font-weight:600">⚡ Run Simulation</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+// roundRect polyfill for older browsers
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.moveTo(x+r, y);
+    this.lineTo(x+w-r, y); this.arcTo(x+w, y, x+w, y+r, r);
+    this.lineTo(x+w, y+h-r); this.arcTo(x+w, y+h, x+w-r, y+h, r);
+    this.lineTo(x+r, y+h); this.arcTo(x, y+h, x, y+h-r, r);
+    this.lineTo(x, y+r); this.arcTo(x, y, x+r, y, r);
+    this.closePath();
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONSTANTS & CONFIG — dynamic, metadata-driven
+// ══════════════════════════════════════════════════════════════════════════
+
+// Fixed semantic tokens
+const SEMANTIC = {
+  color: {
+    eval:     '#a855f7',
+    solution: '#eab308',
+  },
+  label: {
+    eval:     '⚖',
+    solution: '★',
+  }
+};
+
+// Property token palette — assigned dynamically as new properties appear
+const PROP_PALETTE = [
+  '#64748b',  // slate   — weight
+  '#f59e0b',  // amber   — cost
+  '#14b8a6',  // teal    — volume
+  '#ec4899',  // pink    — 4th property
+  '#8b5cf6',  // violet  — 5th property
+  '#06b6d4',  // cyan    — 6th property
+];
+const PROP_ICONS = ['⚖','$','📦','♻','⚡','🔷'];
+const propColorMap = {};   // property name → color
+const propLabelMap = {};   // property name → short label
+let   propPaletteIdx = 0;
+
+function registerProperty(name) {
+  if (!propColorMap[name]) {
+    const idx = propPaletteIdx++;
+    propColorMap[name] = PROP_PALETTE[idx % PROP_PALETTE.length];
+    propLabelMap[name] = PROP_ICONS[idx % PROP_ICONS.length];
+  }
+}
+
+function isPropertyToken(key) {
+  // A property token is NOT a yes/no marker, NOT d_N trigger, NOT semantic
+  return !key.startsWith('yes_') && !key.startsWith('no_') &&
+         !key.startsWith('d_')   && !(key in SEMANTIC.color);
+}
+
+function objColor(key) {
+  if (key.startsWith('yes_')) return '#22c55e';
+  if (key.startsWith('no_'))  return '#ef4444';
+  if (key.startsWith('d_'))   return '#f59e0b';
+  if (key in SEMANTIC.color)  return SEMANTIC.color[key];
+  // Property token
+  registerProperty(key);
+  return propColorMap[key];
+}
+
+function objLabel(key) {
+  if (key.startsWith('yes_')) return '✓' + key.split('_')[1];
+  if (key.startsWith('no_'))  return '✗' + key.split('_')[1];
+  if (key.startsWith('d_'))   return 'D' + key.split('_')[1];
+  if (key in SEMANTIC.label)  return SEMANTIC.label[key];
+  // Property token: short label
+  registerProperty(key);
+  return propLabelMap[key] || key[0].toUpperCase();
+}
+
+// Particle size: property tokens are smaller than choice/semantic markers
+function objRadius(key) {
+  if (key.startsWith('yes_') || key.startsWith('no_')) return 13;
+  if (key === 'eval' || key === 'solution')             return 13;
+  if (key.startsWith('d_'))                            return 12;
+  return 8;  // property tokens — small, like atoms
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════
+let simData    = null;   // loaded JSON
+let curStep    = 0;
+let animT      = 1.0;    // 0..1 within-step animation
+let playing    = false;
+let lastTs     = null;
+let stepDurMs  = 1500;
+
+let selectedId = null;   // selected membrane mem_id
+
+// Per-membrane physics: memId → {particles: Particle[]}
+const physics = {};
+
+// Layout cache: stepIdx → {memId: {x,y,r}}
+const layoutCache = {};
+
+// Active animations
+let ruleAnims = [];  // rule-fire animations
+
+// Hover state
+let hoverMemId = null;
+
+// ══════════════════════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ══════════════════════════════════════════════════════════════════════════
+const canvas   = document.getElementById('mainCanvas');
+const ctx      = canvas.getContext('2d');
+const dctx     = document.getElementById('detailCanvas').getContext('2d');
+
+function resizeCanvas() {
+  const wrap = canvas.parentElement;
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+window.addEventListener('resize', () => { resizeCanvas(); layoutCache.length = 0; });
+resizeCanvas();
+
+// ══════════════════════════════════════════════════════════════════════════
+// LIVE P-SYSTEM ENGINE & CONFIGURATION STATE
+// ══════════════════════════════════════════════════════════════════════════
+
+let currentConfig = {
+  items: [
+    { weight: 2, cost: 3 },
+    { weight: 3, cost: 4 },
+    { weight: 4, cost: 5 }
+  ],
+  constraints: {
+    weight: { max: 5 }
+  },
+  properties: ["weight", "cost"]
+};
+
+// Pure JavaScript P-System simulation engine (faithful to Păun's active membrane model)
+function runSimulationFromConfig(items, constraints) {
+  let idCounter = 0;
+  function nextId(label) {
+    idCounter++;
+    return `${label}#${idCounter}`;
+  }
+
+  // 1. Setup skin and initial gen membrane
+  const skin = {
+    id: nextId("skin"),
+    label: "skin",
+    parent: null,
+    children: [],
+    objects: {},
+    alive: true
+  };
+  const gen0 = {
+    id: nextId("gen"),
+    label: "gen",
+    parent: skin,
+    children: [],
+    objects: { "d_1": 1 },
+    alive: true
+  };
+  skin.children.push(gen0);
+
+  const n = items.length;
+  const allProps = Array.from(new Set(items.flatMap(it => Object.keys(it)))).sort();
+
+  // Snapshot helper
+  function snapshotTree(node) {
+    return {
+      id: node.id,
+      label: node.label,
+      dna: node.dna ? [...node.dna] : (typeof extractDna === 'function' ? extractDna(node) : []),
+      objects: Object.assign({}, node.objects),
+      children: node.children.filter(c => c.alive).map(snapshotTree)
+    };
+  }
+
+  const history = [];
+  // Step 0
+  history.push({
+    step: 0,
+    events: [],
+    tree: snapshotTree(skin)
+  });
+
+  // Collect living membranes helper
+  function getLiving(node) {
+    if (!node.alive) return [];
+    let list = [node];
+    for (const c of node.children) {
+      list = list.concat(getLiving(c));
+    }
+    return list;
+  }
+
+  // Phase 1: Division steps (1 per item)
+  for (let idx = 0; idx < n; idx++) {
+    const num = idx + 1;
+    const trigger = `d_${num}`;
+    const nxt = (num === n) ? "eval" : `d_${num + 1}`;
+    const item = items[idx];
+    const events = [];
+
+    // All currently living gen membranes containing the trigger object
+    const living = getLiving(skin).filter(m => m.alive && m.label === "gen" && (m.objects[trigger] || 0) >= 1);
+
+    living.forEach(mem => {
+      // Base objects minus trigger
+      const baseObjs = Object.assign({}, mem.objects);
+      delete baseObjs[trigger];
+
+      // Daughter A (yes) — include this item & add its unary property tokens
+      const aObjs = Object.assign({}, baseObjs);
+      aObjs[`yes_${num}`] = (aObjs[`yes_${num}`] || 0) + 1;
+      aObjs[nxt] = (aObjs[nxt] || 0) + 1;
+      for (const [p, val] of Object.entries(item)) {
+        aObjs[p] = (aObjs[p] || 0) + Number(val);
+      }
+
+      // Daughter B (no) — skip this item (no property tokens)
+      const bObjs = Object.assign({}, baseObjs);
+      bObjs[`no_${num}`] = (bObjs[`no_${num}`] || 0) + 1;
+      bObjs[nxt] = (bObjs[nxt] || 0) + 1;
+
+      // Inherit and extend DNA chromosome
+      const pDna = mem.dna || [];
+      const daDna = pDna.concat([{ item: num, choice: true, label: `✓${num}` }]);
+      const dbDna = pDna.concat([{ item: num, choice: false, label: `✗${num}` }]);
+
+      const da = {
+        id: nextId("gen"),
+        label: "gen",
+        parent: mem.parent,
+        children: [],
+        objects: aObjs,
+        dna: daDna,
+        alive: true
+      };
+      const db = {
+        id: nextId("gen"),
+        label: "gen",
+        parent: mem.parent,
+        children: [],
+        objects: bObjs,
+        dna: dbDna,
+        alive: true
+      };
+
+      // Replace mem with daughters in parent
+      const pIdx = mem.parent.children.indexOf(mem);
+      if (pIdx !== -1) {
+        mem.parent.children.splice(pIdx, 1, da, db);
+      }
+      mem.alive = false;
+
+      events.push({
+        event: "membrane_divided",
+        parent_id: mem.id,
+        parent_label: mem.label,
+        daughter_a_id: da.id,
+        daughter_b_id: db.id,
+        daughter_a_objects: Object.assign({}, aObjs),
+        daughter_b_objects: Object.assign({}, bObjs)
+      });
+    });
+
+    history.push({
+      step: num,
+      events: events,
+      tree: snapshotTree(skin)
+    });
+  }
+
+  // Phase 2: Evaluation step
+  const evalStepNum = n + 1;
+  const evalEvents = [];
+  const evalLiving = getLiving(skin).filter(m => m.alive && m.label === "gen" && (m.objects["eval"] || 0) >= 1);
+
+  evalLiving.forEach(mem => {
+    // Check constraints against unary multiset token counts
+    let isValid = true;
+    for (const [prop, cond] of Object.entries(constraints)) {
+      const cnt = mem.objects[prop] || 0;
+      if (cond.max != null && cnt > cond.max) isValid = false;
+      if (cond.min != null && cnt < cond.min) isValid = false;
+    }
+
+    if (isValid) {
+      delete mem.objects["eval"];
+      skin.objects["solution"] = (skin.objects["solution"] || 0) + 1;
+      evalEvents.push({
+        event: "rule_fired",
+        rule: "Accept_Valid_Subset",
+        membrane_id: mem.id,
+        membrane_label: mem.label,
+        consumed: { eval: 1 },
+        produced: { solution: 1 },
+        target: "out"
+      });
+    } else {
+      delete mem.objects["eval"];
+      evalEvents.push({
+        event: "rule_fired",
+        rule: "Discard_Invalid_Subset",
+        membrane_id: mem.id,
+        membrane_label: mem.label,
+        consumed: { eval: 1 },
+        produced: {},
+        target: "here"
+      });
+    }
+  });
+
+  history.push({
+    step: evalStepNum,
+    events: evalEvents,
+    tree: snapshotTree(skin)
+  });
+
+  // Construct rules meta for display
+  const rulesMeta = [];
+  for (let idx = 0; idx < n; idx++) {
+    const num = idx + 1;
+    const item = items[idx];
+    const nxt = (num === n) ? "eval" : `d_${num + 1}`;
+    const dA = { [`yes_${num}`]: 1, [nxt]: 1 };
+    for (const [p, val] of Object.entries(item)) {
+      dA[p] = Number(val);
+    }
+    const dB = { [`no_${num}`]: 1, [nxt]: 1 };
+    rulesMeta.push({
+      name: `Divide_Item${num}`,
+      type: "division",
+      trigger: `d_${num}`,
+      daughter_a: dA,
+      daughter_b: dB,
+      applies_to: "gen"
+    });
+  }
+  rulesMeta.push({
+    name: "Accept_Valid_Subset",
+    type: "evolution",
+    lhs: { eval: 1 },
+    rhs: { solution: 1 },
+    target: "out",
+    applies_to: "gen"
+  });
+  rulesMeta.push({
+    name: "Discard_Invalid_Subset",
+    type: "evolution",
+    lhs: { eval: 1 },
+    rhs: {},
+    target: "here",
+    applies_to: "gen"
+  });
+
+  return {
+    title: `Knapsack · ${n} items · ` + Object.entries(constraints).map(([p, c]) => c.max != null ? `${p}≤${c.max}` : `${p}≥${c.min}`).join(", "),
+    rules: rulesMeta,
+    steps: history,
+    metadata: {
+      items: items,
+      constraints: constraints,
+      properties: allProps
+    }
+  };
+}
+
+function executeLiveSimulation() {
+  simData = runSimulationFromConfig(currentConfig.items, currentConfig.constraints);
+  initSim();
+}
+
+// ── Configuration Modal UI Logic ──────────────────────────────────────────
+const modal = document.getElementById("configModal");
+
+function openConfigModal() {
+  renderConfigModal();
+  modal.classList.add("open");
+}
+function closeConfigModal() {
+  modal.classList.remove("open");
+}
+
+document.getElementById("btnOpenConfig").addEventListener("click", openConfigModal);
+document.getElementById("btnCloseConfig").addEventListener("click", closeConfigModal);
+document.getElementById("btnCancelConfig").addEventListener("click", closeConfigModal);
+document.getElementById("btnQuickRun").addEventListener("click", () => {
+  executeLiveSimulation();
+  startPlay();
+});
+
+function renderConfigModal() {
+  const props = currentConfig.properties;
+  const items = currentConfig.items;
+
+  // Table header
+  const thead = document.getElementById("itemsTableHead");
+  let thHtml = `<tr><th style="width:70px">Item</th>`;
+  props.forEach(p => {
+    thHtml += `<th>${p.charAt(0).toUpperCase() + p.slice(1)}</th>`;
+  });
+  thHtml += `<th style="width:36px"></th></tr>`;
+  thead.innerHTML = thHtml;
+
+  // Table body
+  const tbody = document.getElementById("itemsTableBody");
+  tbody.innerHTML = "";
+  items.forEach((item, idx) => {
+    const tr = document.createElement("tr");
+    let rowHtml = `<td style="font-weight:600;color:#93c5fd">Item ${idx + 1}</td>`;
+    props.forEach(p => {
+      const val = item[p] != null ? item[p] : 1;
+      rowHtml += `<td><input type="number" min="0" value="${val}" data-idx="${idx}" data-prop="${p}" class="cfg-item-val"></td>`;
+    });
+    rowHtml += `<td><button class="del-row-btn" data-del-item="${idx}" title="Remove item">✕</button></td>`;
+    tr.innerHTML = rowHtml;
+    tbody.appendChild(tr);
+  });
+
+  // Constraints list
+  const clist = document.getElementById("constraintsList");
+  clist.innerHTML = "";
+  const cEntries = Object.entries(currentConfig.constraints);
+  if (!cEntries.length) {
+    clist.innerHTML = `<div style="color:var(--muted);font-size:11px">(No active constraints — all combinations accepted)</div>`;
+  } else {
+    cEntries.forEach(([prop, cond]) => {
+      const isMax = cond.max != null;
+      const val = isMax ? cond.max : cond.min;
+      const row = document.createElement("div");
+      row.className = "c-row";
+      row.innerHTML = `
+        <span style="min-width:70px;color:var(--blue);font-weight:600">${prop}</span>
+        <select data-c-prop="${prop}" class="cfg-c-type">
+          <option value="max" ${isMax ? "selected" : ""}>≤ (maximum threshold)</option>
+          <option value="min" ${!isMax ? "selected" : ""}>≥ (minimum threshold)</option>
+        </select>
+        <input type="number" min="0" value="${val}" data-c-prop="${prop}" class="cfg-c-val" style="width:70px">
+        <button class="del-row-btn" data-del-c="${prop}" title="Remove constraint">✕</button>
+      `;
+      clist.appendChild(row);
+    });
+  }
+
+  // Update estimate
+  const n = items.length;
+  const count = Math.pow(2, n);
+  const estEl = document.getElementById("cfgMemEstimate");
+  estEl.textContent = `${n} items → 2^${n} = ${count} parallel membranes`;
+  if (n > 5) {
+    estEl.style.color = "var(--amber)";
+    estEl.textContent += " (crowded layout)";
+  } else {
+    estEl.style.color = "var(--muted)";
+  }
+}
+
+// Read current inputs from modal and update currentConfig
+function saveModalInputs() {
+  // Read items
+  document.querySelectorAll(".cfg-item-val").forEach(input => {
+    const idx = parseInt(input.dataset.idx);
+    const prop = input.dataset.prop;
+    const val = parseInt(input.value) || 0;
+    if (currentConfig.items[idx]) {
+      currentConfig.items[idx][prop] = val;
+    }
+  });
+
+  // Read constraints
+  const newConstraints = {};
+  document.querySelectorAll(".cfg-c-val").forEach(input => {
+    const prop = input.dataset.cProp;
+    const val = parseInt(input.value) || 0;
+    const typeSelect = document.querySelector(`.cfg-c-type[data-c-prop="${prop}"]`);
+    const isMax = typeSelect ? typeSelect.value === "max" : true;
+    newConstraints[prop] = isMax ? { max: val } : { min: val };
+  });
+  currentConfig.constraints = newConstraints;
+}
+
+// Modal action listeners
+document.getElementById("btnAddItem").addEventListener("click", () => {
+  saveModalInputs();
+  const newItem = {};
+  currentConfig.properties.forEach(p => newItem[p] = 2);
+  currentConfig.items.push(newItem);
+  renderConfigModal();
+});
+
+document.getElementById("btnAddProp").addEventListener("click", () => {
+  const pName = prompt("Enter new property name (e.g. 'volume', 'risk'):");
+  if (!pName) return;
+  const clean = pName.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+  if (!clean || currentConfig.properties.includes(clean)) return;
+  saveModalInputs();
+  currentConfig.properties.push(clean);
+  currentConfig.items.forEach(it => it[clean] = 1);
+  renderConfigModal();
+});
+
+document.getElementById("itemsTableBody").addEventListener("click", e => {
+  const delBtn = e.target.closest("[data-del-item]");
+  if (delBtn) {
+    saveModalInputs();
+    const idx = parseInt(delBtn.dataset.delItem);
+    if (currentConfig.items.length <= 1) {
+      alert("You need at least 1 item!");
+      return;
+    }
+    currentConfig.items.splice(idx, 1);
+    renderConfigModal();
+  }
+});
+
+document.getElementById("btnAddConstraint").addEventListener("click", () => {
+  saveModalInputs();
+  const available = currentConfig.properties.filter(p => !currentConfig.constraints[p]);
+  const prop = available[0] || currentConfig.properties[0];
+  if (!prop) return;
+  currentConfig.constraints[prop] = { max: 5 };
+  renderConfigModal();
+});
+
+document.getElementById("constraintsList").addEventListener("click", e => {
+  const delBtn = e.target.closest("[data-del-c]");
+  if (delBtn) {
+    saveModalInputs();
+    const prop = delBtn.dataset.delC;
+    delete currentConfig.constraints[prop];
+    renderConfigModal();
+  }
+});
+
+// Presets
+document.getElementById("preset3").addEventListener("click", () => {
+  currentConfig = {
+    items: [
+      { weight: 2, cost: 3 },
+      { weight: 3, cost: 4 },
+      { weight: 4, cost: 5 }
+    ],
+    constraints: { weight: { max: 5 } },
+    properties: ["weight", "cost"]
+  };
+  renderConfigModal();
+});
+
+document.getElementById("preset4").addEventListener("click", () => {
+  currentConfig = {
+    items: [
+      { weight: 2, cost: 3 },
+      { weight: 3, cost: 4 },
+      { weight: 4, cost: 5 },
+      { weight: 1, cost: 2 }
+    ],
+    constraints: { weight: { max: 6 } },
+    properties: ["weight", "cost"]
+  };
+  renderConfigModal();
+});
+
+document.getElementById("presetMulti").addEventListener("click", () => {
+  currentConfig = {
+    items: [
+      { weight: 2, cost: 3, volume: 4 },
+      { weight: 3, cost: 4, volume: 2 },
+      { weight: 4, cost: 5, volume: 5 }
+    ],
+    constraints: { weight: { max: 5 }, volume: { max: 6 } },
+    properties: ["weight", "cost", "volume"]
+  };
+  renderConfigModal();
+});
+
+// Run from modal
+document.getElementById("btnRunConfig").addEventListener("click", () => {
+  saveModalInputs();
+  closeConfigModal();
+  executeLiveSimulation();
+  startPlay();
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════════════════════════════════════
+document.getElementById('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      simData = JSON.parse(ev.target.result);
+      if (simData.metadata && simData.metadata.items) {
+        currentConfig.items = simData.metadata.items;
+        currentConfig.constraints = simData.metadata.constraints || {};
+        currentConfig.properties = simData.metadata.properties || Object.keys(simData.metadata.items[0] || {});
+      }
+      initSim();
+    } catch(err) { alert('Bad JSON: ' + err); }
+  };
+  r.readAsText(f);
+});
+
+// Initial boot: try fetching JSON; if not found or blocked, run live simulation from default config
+fetch('simulation_data.json')
+  .then(r => r.ok ? r.json() : Promise.reject())
+  .then(d => {
+    simData = d;
+    if (simData.metadata && simData.metadata.items) {
+      currentConfig.items = simData.metadata.items;
+      currentConfig.constraints = simData.metadata.constraints || {};
+      currentConfig.properties = simData.metadata.properties || Object.keys(simData.metadata.items[0] || {});
+    }
+    initSim();
+  })
+  .catch(() => {
+    executeLiveSimulation();
+  });
+
+function initSim() {
+  curStep = 0; animT = 1.0;
+  Object.keys(physics).forEach(k => delete physics[k]);
+  Object.keys(layoutCache).forEach(k => delete layoutCache[k]);
+  ruleAnims = [];
+  selectedId = null;
+  document.getElementById('detailCol').classList.remove('open');
+
+  const steps = simData.steps;
+  document.getElementById('scrubber').max   = steps.length - 1;
+  document.getElementById('scrubber').value = 0;
+  document.getElementById('stepLabel').textContent = `Step 0 / ${steps.length-1}`;
+
+  buildLogPanel();
+  // Pre-build physics for step 0
+  const L = computeLayout(0);
+  initPhysicsFromLayout(L);
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LOG PANEL
+// ══════════════════════════════════════════════════════════════════════════
+function buildLogPanel() {
+  const body = document.getElementById('logBody');
+  body.innerHTML = '';
+  simData.steps.forEach((step, si) => {
+    const hdr = document.createElement('div');
+    hdr.className = 'log-step' + (si===0?' active':'');
+    hdr.id = `ls${si}`;
+    hdr.textContent = si === 0 ? '⚙ Initial State' : `⟳ Step ${step.step}`;
+    hdr.addEventListener('click', () => jumpToStep(si));
+    body.appendChild(hdr);
+
+    (step.events||[]).forEach(ev => {
+      const el = document.createElement('div');
+      if (ev.event === 'membrane_divided') {
+        el.className = 'log-ev div';
+        el.innerHTML = `✂ <b>DIVIDE</b> [${ev.parent_label}]
+          <span class="sub">A: ${fmtObjs(ev.daughter_a_objects)}</span>
+          <span class="sub">B: ${fmtObjs(ev.daughter_b_objects)}</span>`;
+      } else if (ev.event === 'rule_fired') {
+        el.className = 'log-ev rule';
+        el.innerHTML = `⚡ <b>${ev.rule}</b>
+          <span class="sub">${fmtObjs(ev.consumed)} → ${fmtObjs(ev.produced)} [${ev.target}]</span>`;
+      } else if (ev.event === 'membrane_dissolved') {
+        el.className = 'log-ev diss';
+        el.innerHTML = `💥 <b>DISSOLVE</b> [${ev.membrane_label}]
+          <span class="sub">released: ${fmtObjs(ev.objects_released)}</span>`;
+      }
+      body.appendChild(el);
+    });
+  });
+}
+
+function fmtObjs(obj) {
+  if (!obj || !Object.keys(obj).length) return '∅';
+  return Object.entries(obj).map(([k,v]) => v>1?`${v}×${k}`:k).join(', ');
+}
+
+function highlightLogStep(si) {
+  document.querySelectorAll('.log-step').forEach(e => e.classList.remove('active'));
+  const el = document.getElementById(`ls${si}`);
+  if (el) { el.classList.add('active'); el.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LAYOUT ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+function computeLayout(si) {
+  if (layoutCache[si]) return layoutCache[si];
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  const skinR = Math.min(W, H) * 0.43;
+  const positions = {};
+  layoutNode(simData.steps[si].tree, cx, cy, skinR, positions);
+  layoutCache[si] = positions;
+  return positions;
+}
+
+function layoutNode(node, cx, cy, r, pos) {
+  pos[node.id] = { x: cx, y: cy, r, label: node.label, objects: node.objects };
+  const ch = (node.children || []).filter(c => c);
+  if (!ch.length) return;
+  const N = ch.length;
+  let childR, arrR;
+  if (N === 1) {
+    childR = r * 0.52;
+    arrR   = 0;
+  } else {
+    const sinPN = Math.sin(Math.PI / N);
+    childR = Math.min(r * 0.9 * sinPN / (1 + sinPN), r * 0.42);
+    arrR   = r * 0.9 - childR;
+  }
+  ch.forEach((child, i) => {
+    const angle = (2*Math.PI*i/N) - Math.PI/2;
+    const px = cx + arrR * Math.cos(angle);
+    const py = cy + arrR * Math.sin(angle);
+    layoutNode(child, px, py, childR, pos);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PARTICLE PHYSICS
+// ══════════════════════════════════════════════════════════════════════════
+class Particle {
+  constructor(key, cx, cy, memR) {
+    this.key    = key;
+    this.isProp = isPropertyToken(key);
+    this.r      = objRadius(key);
+
+    // Property tokens cluster near center; choice tokens spread wider
+    const spread = this.isProp ? 0.35 : 0.55;
+    const d      = Math.random() * memR * spread;
+    const angle  = Math.random() * Math.PI * 2;
+    this.x  = cx + Math.cos(angle) * d;
+    this.y  = cy + Math.sin(angle) * d;
+    // Property tokens move slower (like heavier molecules)
+    const spd = this.isProp ? 0.3 : 0.6;
+    this.vx = (Math.random()-.5) * spd;
+    this.vy = (Math.random()-.5) * spd;
+
+    this.alpha = 0;        // fades in
+    this.scale = 0.3;      // grows in
+    this.state = 'spawn';  // 'spawn' | 'live' | 'die'
+    this.stateT= 0;
+    this.cx    = cx;
+    this.cy    = cy;
+    this.memR  = memR;
+    this.flashT     = 0;
+    this.flashColor = null;
+  }
+
+  update(dt) {
+    this.stateT = Math.min(1, this.stateT + dt * 0.003);
+    if (this.state === 'spawn') {
+      this.alpha = this.stateT;
+      this.scale = 0.3 + 0.7 * this.stateT;
+      if (this.stateT >= 1) this.state = 'live';
+    } else if (this.state === 'die') {
+      this.alpha = 1 - this.stateT;
+      this.scale = 1 - 0.7*this.stateT;
+    } else {
+      this.alpha = 1;
+      this.scale = 1;
+    }
+
+    if (this.flashT > 0) this.flashT = Math.max(0, this.flashT - dt * 0.004);
+
+    if (this.state !== 'die') {
+      this.x += this.vx * dt * 0.025;
+      this.y += this.vy * dt * 0.025;
+      const dx   = this.x - this.cx;
+      const dy   = this.y - this.cy;
+      const dist = Math.hypot(dx, dy);
+      const max  = this.memR - this.r - 4;
+      if (dist > max) {
+        const nx = dx/dist, ny = dy/dist;
+        const dot = this.vx*nx + this.vy*ny;
+        this.vx -= 2*dot*nx;
+        this.vy -= 2*dot*ny;
+        this.x = this.cx + nx*(max-1);
+        this.y = this.cy + ny*(max-1);
+      }
+    }
+  }
+
+  draw(c) {
+    if (this.alpha < 0.01) return;
+    c.save();
+    c.globalAlpha = Math.min(1, this.alpha);
+    c.translate(this.x, this.y);
+    c.scale(this.scale, this.scale);
+
+    const col = this.flashT > 0 ? this.flashColor : objColor(this.key);
+
+    // Glow (brighter for choice tokens, subtle for property tokens)
+    if (this.flashT > 0 || this.state === 'spawn' || !this.isProp) {
+      const glowR = this.isProp ? this.r * 1.6 : this.r * 2;
+      const g = c.createRadialGradient(0,0,0, 0,0,glowR);
+      g.addColorStop(0, col + (this.isProp ? '44' : '88'));
+      g.addColorStop(1, 'transparent');
+      c.beginPath(); c.arc(0,0,glowR,0,Math.PI*2);
+      c.fillStyle = g; c.fill();
+    }
+
+    // Circle body
+    c.beginPath(); c.arc(0,0,this.r,0,Math.PI*2);
+    c.fillStyle = this.isProp ? col + '22' : col + '33';
+    c.fill();
+    c.strokeStyle = col;
+    c.lineWidth   = this.isProp ? 1 : 1.5;
+    c.stroke();
+
+    // Label
+    c.fillStyle      = col;
+    c.font           = `${this.isProp ? '' : 'bold '}${Math.max(6, this.r*0.85)}px Segoe UI`;
+    c.textAlign      = 'center';
+    c.textBaseline   = 'middle';
+    c.fillText(objLabel(this.key), 0, 0.5);
+    c.restore();
+  }
+}
+
+function ensurePhysics(memId, layout) {
+  const pos = layout[memId]; if (!pos) return;
+  if (!physics[memId]) {
+    physics[memId] = { particles: [] };
+    const objs = pos.objects || {};
+    Object.entries(objs).forEach(([k, cnt]) => {
+      // DNA choice markers (yes_*, no_*) are packaged into the cell DNA at the top
+      if (k.startsWith('yes_') || k.startsWith('no_')) return;
+      for (let i=0; i<cnt; i++) {
+        physics[memId].particles.push(new Particle(k, pos.x, pos.y, pos.r));
+      }
+    });
+  } else {
+    // Reposition particles to current membrane center
+    physics[memId].particles.forEach(p => {
+      p.cx = pos.x; p.cy = pos.y; p.memR = pos.r;
+    });
+  }
+}
+
+function initPhysicsFromLayout(layout) {
+  Object.entries(layout).forEach(([id, pos]) => {
+    if (pos.label !== 'skin') ensurePhysics(id, layout);
+  });
+}
+
+function syncPhysicsToState(si) {
+  const layout = computeLayout(si);
+  const tree   = simData.steps[si].tree;
+  const events = simData.steps[si].events || [];
+
+  // Collect all living memIds from tree
+  const liveIds = new Set();
+  function collectIds(node) {
+    liveIds.add(node.id);
+    (node.children||[]).forEach(collectIds);
+  }
+  collectIds(tree);
+
+  // Remove physics for dead membranes
+  Object.keys(physics).forEach(id => {
+    if (!liveIds.has(id)) delete physics[id];
+  });
+
+  // Ensure physics for all living
+  liveIds.forEach(id => {
+    if (id !== tree.id) ensurePhysics(id, layout);
+  });
+
+  // Apply event animations: flash consumed, spawn produced
+  events.forEach(ev => {
+    if (ev.event === 'rule_fired') {
+      const ph = physics[ev.membrane_id];
+      if (!ph) return;
+      // Flash consumed objects then remove
+      Object.keys(ev.consumed||{}).forEach(key => {
+        const p = ph.particles.find(p => p.key===key && p.state==='live');
+        if (p) { p.state='die'; p.stateT=0; p.flashT=1; p.flashColor='#ef4444'; }
+      });
+      // Spawn produced objects
+      const pos = layout[ev.membrane_id];
+      if (pos) {
+        const targetId = ev.target === 'out'
+          ? findParentId(tree, ev.membrane_id)
+          : ev.membrane_id;
+        const targetPos = layout[targetId];
+        if (targetPos && physics[targetId]) {
+          Object.entries(ev.produced||{}).forEach(([k, cnt]) => {
+            if (k.startsWith('yes_') || k.startsWith('no_')) return;
+            for (let i=0; i<cnt; i++) {
+              const np = new Particle(k, targetPos.x, targetPos.y, targetPos.r);
+              np.flashT=1; np.flashColor=objColor(k);
+              physics[targetId].particles.push(np);
+            }
+          });
+        }
+      }
+    }
+    if (ev.event === 'membrane_divided') {
+      // Daughter particles will be initialized by ensurePhysics above
+      // Flash daughters green
+      [ev.daughter_a_id, ev.daughter_b_id].forEach(id => {
+        if (physics[id]) {
+          physics[id].particles.forEach(p => {
+            p.flashT=1; p.flashColor=objColor(p.key);
+          });
+        }
+      });
+    }
+  });
+}
+
+function findParentId(root, childId, parentId=null) {
+  if (root.id === childId) return parentId;
+  for (const c of root.children||[]) {
+    const r = findParentId(c, childId, root.id);
+    if (r !== undefined) return r;
+  }
+  return undefined;
+}
+
+function triggerRuleAnims(si) {
+  ruleAnims = (simData.steps[si].events||[])
+    .filter(e => e.event === 'rule_fired')
+    .map(ev => ({ memId: ev.membrane_id, t: 0 }));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DRAWING HELPERS
+// ══════════════════════════════════════════════════════════════════════════
+function drawGlow(c, cx, cy, r, color, spread=20, alpha=0.4) {
+  const g = c.createRadialGradient(cx, cy, r*0.4, cx, cy, r+spread);
+  g.addColorStop(0, color + Math.round(alpha*255).toString(16).padStart(2,'0'));
+  g.addColorStop(1, 'transparent');
+  c.beginPath(); c.arc(cx, cy, r+spread, 0, Math.PI*2);
+  c.fillStyle = g; c.fill();
+}
+
+function extractDna(node) {
+  if (!node) return [];
+  if (node.dna && node.dna.length) return node.dna;
+  const objs = node.objects || {};
+  const genes = [];
+  Object.keys(objs).forEach(k => {
+    if (k.startsWith('yes_')) {
+      const idx = parseInt(k.split('_')[1]);
+      genes.push({ item: idx, choice: true, label: `✓${idx}` });
+    } else if (k.startsWith('no_')) {
+      const idx = parseInt(k.split('_')[1]);
+      genes.push({ item: idx, choice: false, label: `✗${idx}` });
+    }
+  });
+  genes.sort((a, b) => a.item - b.item);
+  return genes;
+}
+
+function drawMembrane(c, x, y, r, label, borderColor='#334155', fillColor='#0d1117',
+                       lineWidth=2, glowColor=null, glowAlpha=0.3, labelAlpha=1, dna=null) {
+  if (glowColor) drawGlow(c, x, y, r, glowColor, 24, glowAlpha);
+
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI*2);
+  c.fillStyle = fillColor; c.fill();
+  c.strokeStyle = borderColor; c.lineWidth = lineWidth;
+  c.stroke();
+
+  if (r < 10) return;
+  c.save();
+  c.globalAlpha = labelAlpha;
+
+  const topY = y - r + Math.max(12, r * 0.22);
+
+  if (dna && dna.length > 0) {
+    // Render DNA chromosome sequence at the top in place of [gen]
+    const fSize = Math.max(8, Math.min(12, r * 0.23));
+    c.font = `bold ${fSize}px monospace, 'Segoe UI'`;
+    c.textBaseline = 'middle';
+
+    const spans = dna.map(g => ({
+      text: (g.choice ? '✓' : '✗') + g.item,
+      color: g.choice ? '#22c55e' : '#ef4444'
+    }));
+
+    let contentW = 0;
+    const widths = spans.map(s => {
+      const w = c.measureText(s.text).width + 3;
+      contentW += w;
+      return w;
+    });
+
+    const brkW = c.measureText('[').width;
+    const totalW = contentW + brkW * 2 + 4;
+    const capH = fSize + 6;
+    const capX = x - totalW / 2;
+    const capY = topY - capH / 2;
+
+    // Capsule background
+    c.fillStyle = '#080d19ee';
+    c.beginPath();
+    c.roundRect(capX - 4, capY, totalW + 8, capH, 5);
+    c.fill();
+    c.strokeStyle = borderColor + 'aa';
+    c.lineWidth = 1;
+    c.stroke();
+
+    // Render left bracket
+    let curX = capX;
+    c.fillStyle = '#64748b';
+    c.textAlign = 'left';
+    c.fillText('[', curX, topY);
+    curX += brkW + 2;
+
+    // Render each gene
+    spans.forEach((span, i) => {
+      c.fillStyle = span.color;
+      c.fillText(span.text, curX, topY);
+      curX += widths[i];
+    });
+
+    // Render right bracket
+    c.fillStyle = '#64748b';
+    c.fillText(']', curX, topY);
+
+  } else {
+    c.fillStyle = borderColor;
+    c.font = `${Math.max(8, Math.min(13, r*0.18))}px monospace`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(`[${label}]`, x, topY);
+  }
+
+  c.restore();
+}
+
+function drawSkin(c, cx, cy, r, pulseFactor=1) {
+  const pr = r * pulseFactor;
+  // Outer ambient glow
+  drawGlow(c, cx, cy, pr, '#3b82f6', 40, 0.15);
+  // Dashed outer ring
+  c.save();
+  c.setLineDash([8, 6]);
+  c.beginPath(); c.arc(cx, cy, pr+6, 0, Math.PI*2);
+  c.strokeStyle = '#3b82f622'; c.lineWidth = 1; c.stroke();
+  c.setLineDash([]);
+  c.restore();
+  // Main circle
+  c.beginPath(); c.arc(cx, cy, pr, 0, Math.PI*2);
+  const grad = c.createRadialGradient(cx, cy-pr*0.3, pr*0.1, cx, cy, pr);
+  grad.addColorStop(0, '#0d1f38');
+  grad.addColorStop(1, '#080e1a');
+  c.fillStyle = grad; c.fill();
+  c.strokeStyle = '#3b82f6'; c.lineWidth = 2; c.stroke();
+  // Label
+  c.fillStyle = '#3b82f6';
+  c.font = 'bold 13px Segoe UI';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('[skin]', cx, cy - pr + 18);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MAIN RENDER
+// ══════════════════════════════════════════════════════════════════════════
+function renderAll() {
+  if (!simData) {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#64748b'; ctx.font='14px Segoe UI';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('Load simulation_data.json to begin', canvas.width/2, canvas.height/2);
+    return;
+  }
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const layout = computeLayout(curStep);
+  const root   = simData.steps[curStep].tree;
+  const events = simData.steps[curStep].events || [];
+
+  const divIds  = new Set(events.filter(e=>e.event==='membrane_divided').flatMap(e=>[e.daughter_a_id, e.daughter_b_id]));
+  const ruleIds = new Set(events.filter(e=>e.event==='rule_fired').map(e=>e.membrane_id));
+
+  // ── Draw skin ──────────────────────────────────────────────────────────
+  const sp = layout[root.id];
+  if (sp) drawSkin(ctx, sp.x, sp.y, sp.r);
+
+  // ── Draw child membranes ───────────────────────────────────────────────
+  function drawTree(node, depth=0) {
+    if (node.id === root.id) { (node.children||[]).forEach(c=>drawTree(c, depth+1)); return; }
+    const pos = layout[node.id]; if (!pos) return;
+    const { x, y, r } = pos;
+
+    const objs = node.objects || {};
+    const hasEval = objs.eval > 0;
+    const hasSol  = objs.solution > 0;
+    const isDiv   = divIds.has(node.id);
+    const isRule  = ruleIds.has(node.id);
+    const isSel   = node.id === selectedId;
+    const isHov   = node.id === hoverMemId;
+
+    let border='#21293a', fill='#0d1117', glow=null, glow_a=0.3, lw=1.5;
+    if (isDiv)  { border='#22c55e'; fill='#0a1f0a'; glow='#22c55e'; lw=2.5; }
+    else if (hasEval)  { border='#a855f7'; fill='#120a1f'; glow='#a855f7'; }
+    else if (hasSol)   { border='#eab308'; fill='#1a1500'; glow='#eab308'; }
+    else if (isRule)   { border='#3b82f6'; fill='#0a1225'; glow='#3b82f6'; glow_a=0.25; }
+    else { border='#1e3a5f'; fill='#080e18'; }
+
+    if (isSel) { border='#f59e0b'; glow='#f59e0b'; glow_a=0.5; lw=2.5; }
+    else if (isHov) { glow=border; glow_a=0.2; }
+
+    const dna = extractDna(node);
+    drawMembrane(ctx, x, y, r, node.label, border, fill, lw, glow, glow_a, 1, dna);
+
+    // Draw particles
+    const ph = physics[node.id];
+    if (ph) ph.particles.forEach(p => { if (p.alpha>0.01) p.draw(ctx); });
+
+    // Draw objects in skin if skin has objects (solutions)
+    (node.children||[]).forEach(c => drawTree(c, depth+1));
+  }
+
+  // Also show solutions in skin
+  const skinObjs = root.objects || {};
+  if (skinObjs.solution > 0) {
+    const { x, y, r } = sp;
+    ctx.fillStyle = '#eab308';
+    ctx.font = `bold 14px Segoe UI`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(`★ ${skinObjs.solution} solution${skinObjs.solution>1?'s':''}`, x, y+r-24);
+  }
+
+  drawTree(root);
+
+  // ── Legend overlay ─────────────────────────────────────────────────────
+  drawLegend();
+
+  // ── Step label on canvas ───────────────────────────────────────────────
+  ctx.save();
+  ctx.fillStyle = '#0d1117cc';
+  ctx.beginPath();
+  ctx.roundRect(canvas.width - 136, canvas.height - 36, 128, 28, 6);
+  ctx.fill();
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 12px Segoe UI';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const totalSteps = simData.steps.length - 1;
+  ctx.fillText(`Step ${curStep} / ${totalSteps}`, canvas.width - 72, canvas.height - 22);
+  ctx.restore();
+
+  // ── Detail panel canvas ────────────────────────────────────────────────
+  if (selectedId) drawDetailCanvas();
+}
+
+function drawLegend() {
+  const items = [
+    { color:'#3b82f6',  label:'skin membrane' },
+    { color:'#1e3a5f',  label:'child membrane' },
+    { color:'#22c55e',  label:'dividing cell' },
+    { color:'#a855f7',  label:'evaluating' },
+    { color:'#eab308',  label:'solution found' },
+    { color:'#f59e0b',  label:'selected' },
+  ];
+  const x = 10, y = canvas.height - 10 - items.length*18 - 8;
+  ctx.save();
+  ctx.fillStyle = '#0d1117bb';
+  ctx.beginPath();
+  ctx.roundRect(x, y, 160, items.length*18+12, 6);
+  ctx.fill();
+  items.forEach((it, i) => {
+    const iy = y + 10 + i*18;
+    ctx.beginPath(); ctx.arc(x+14, iy+5, 5, 0, Math.PI*2);
+    ctx.fillStyle = it.color; ctx.fill();
+    ctx.fillStyle = '#94a3b8'; ctx.font = '11px Segoe UI';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(it.label, x+24, iy);
+  });
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ══════════════════════════════════════════════════════════════════════════
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!simData) { renderAll(); return; }
+
+  const dt = lastTs ? Math.min(ts - lastTs, 50) : 16;
+  lastTs = ts;
+
+  // Update physics
+  const layout = computeLayout(curStep);
+  Object.entries(physics).forEach(([id, ph]) => {
+    ph.particles = ph.particles.filter(p => !(p.state==='die' && p.alpha < 0.01));
+    ph.particles.forEach(p => p.update(dt));
+  });
+
+  // Update rule anims
+  ruleAnims.forEach(a => { a.t = Math.min(1, a.t + dt/stepDurMs * 2); });
+
+  renderAll();
+}
+requestAnimationFrame(loop);
+
+// ══════════════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════════════════════════
+function goToStep(si, animated=true) {
+  if (!simData) return;
+  si = Math.max(0, Math.min(simData.steps.length-1, si));
+  curStep = si;
+  document.getElementById('scrubber').value = si;
+  document.getElementById('stepLabel').textContent =
+    `Step ${si} / ${simData.steps.length-1}`;
+  highlightLogStep(si);
+
+  if (animated && si > 0) {
+    triggerRuleAnims(si);
+  } else {
+    ruleAnims = [];
+  }
+
+  syncPhysicsToState(si);
+  if (selectedId) updateDetailPanel(selectedId);
+}
+
+function jumpToStep(si) { stopPlay(); goToStep(si, false); }
+
+function getDelay() {
+  const v = parseInt(document.getElementById('speedSlider').value);
+  return Math.round(2800 / Math.pow(v, 1.05));
+}
+
+let playTimer = null;
+function startPlay() {
+  playing = true;
+  document.getElementById('btnPlay').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+  function tick() {
+    if (curStep >= simData.steps.length-1) { stopPlay(); return; }
+    goToStep(curStep+1);
+    playTimer = setTimeout(tick, getDelay());
+  }
+  playTimer = setTimeout(tick, 400);
+}
+function stopPlay() {
+  playing = false;
+  clearTimeout(playTimer);
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+}
+
+document.getElementById('btnPlay').addEventListener('click',  () => { if(simData && curStep<simData.steps.length-1) startPlay(); });
+document.getElementById('btnPause').addEventListener('click', stopPlay);
+document.getElementById('btnNext').addEventListener('click',  () => { stopPlay(); goToStep(curStep+1); });
+document.getElementById('btnPrev').addEventListener('click',  () => { stopPlay(); goToStep(curStep-1, false); });
+document.getElementById('btnReset').addEventListener('click', () => { stopPlay(); goToStep(0, false); });
+document.getElementById('scrubber').addEventListener('input', function() { stopPlay(); goToStep(parseInt(this.value), false); });
+
+document.getElementById('speedSlider').addEventListener('input', function() {
+  const ms = getDelay();
+  document.getElementById('speedVal').textContent = ms>=1000?(ms/1000).toFixed(1)+'s':ms+'ms';
+});
+// Init speed label
+(()=>{ const ms=getDelay(); document.getElementById('speedVal').textContent=ms>=1000?(ms/1000).toFixed(1)+'s':ms+'ms'; })();
+
+// ══════════════════════════════════════════════════════════════════════════
+// INTERACTION — click / hover
+// ══════════════════════════════════════════════════════════════════════════
+function hitTestMem(mx, my) {
+  if (!simData) return null;
+  const layout = computeLayout(curStep);
+  const root   = simData.steps[curStep].tree;
+  let best = null, bestR = Infinity;
+
+  function check(node) {
+    if (node.id === root.id) { (node.children||[]).forEach(check); return; }
+    const pos = layout[node.id]; if (!pos) return;
+    const d = Math.hypot(mx-pos.x, my-pos.y);
+    if (d < pos.r && pos.r < bestR) { best = node; bestR = pos.r; }
+    (node.children||[]).forEach(check);
+  }
+  check(root);
+  return best;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top)  * scaleY;
+  const hit = hitTestMem(mx, my);
+  hoverMemId = hit ? hit.id : null;
+  canvas.style.cursor = hit ? 'pointer' : 'default';
+
+  // Tooltip
+  const tip = document.getElementById('tooltip');
+  if (hit) {
+    const objs = hit.objects||{};
+    const lines = Object.entries(objs).map(([k,v])=>`${objLabel(k)} ${k}: ${v}`);
+    tip.innerHTML = `<b>[${hit.label}]</b><br>${lines.join('<br>')||'(empty)'}`;
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX+14)+'px';
+    tip.style.top  = (e.clientY-10)+'px';
+  } else {
+    tip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoverMemId = null;
+  document.getElementById('tooltip').style.display = 'none';
+});
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left)*scaleX, my = (e.clientY - rect.top)*scaleY;
+  const hit = hitTestMem(mx, my);
+  if (hit) {
+    selectedId = (selectedId === hit.id) ? null : hit.id;
+    const col = document.getElementById('detailCol');
+    if (selectedId) { col.classList.add('open'); updateDetailPanel(selectedId); }
+    else             col.classList.remove('open');
+  } else {
+    selectedId = null;
+    document.getElementById('detailCol').classList.remove('open');
+  }
+});
+
+document.getElementById('detailClose').addEventListener('click', () => {
+  selectedId = null;
+  document.getElementById('detailCol').classList.remove('open');
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// DETAIL PANEL
+// ══════════════════════════════════════════════════════════════════════════
+function findNodeById(root, id) {
+  if (root.id === id) return root;
+  for (const c of root.children||[]) { const r=findNodeById(c,id); if(r) return r; }
+  return null;
+}
+
+function updateDetailPanel(memId) {
+  if (!simData || !memId) return;
+  const root = simData.steps[curStep].tree;
+  const node = findNodeById(root, memId);
+  if (!node) return;
+
+  document.getElementById('detailTitle').textContent = `[${node.label}] — ${memId}`;
+
+  const objs        = node.objects || {};
+  const meta        = simData.metadata || {};
+  const constraints = meta.constraints || {};
+  const properties  = meta.properties  || [];
+
+  // ── Objects section ────────────────────────────────────────────────────
+  const dobj = document.getElementById('detailObjects');
+  dobj.innerHTML = '';
+
+  // --- DNA Genome Card ---
+  const dna = extractDna(node);
+  if (dna.length) {
+    const dnaBox = document.createElement('div');
+    dnaBox.style.cssText = 'background:#0a101d;border:1px solid #1e293b;border-radius:8px;padding:9px 11px;margin-bottom:12px';
+    dnaBox.innerHTML = `
+      <div style="font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+        <span>🧬</span> Genome (DNA Package)
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        ${dna.map(g => `
+          <span style="display:inline-flex;align-items:center;gap:4px;background:#161b22;border:1px solid ${g.choice ? '#22c55e44' : '#ef444444'};color:${g.choice ? '#22c55e' : '#ef4444'};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">
+            ${g.label} ${g.choice ? 'Include' : 'Skip'}
+          </span>
+        `).join('')}
+      </div>
+    `;
+    dobj.appendChild(dnaBox);
+  }
+
+  const orgHdr = document.createElement('h3');
+  orgHdr.textContent = 'Objects (Organelles)';
+  dobj.appendChild(orgHdr);
+
+  // --- Property token totals with constraint bar ---
+  if (properties.length) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:10px;color:var(--muted);margin:8px 0 2px;letter-spacing:.06em;text-transform:uppercase';
+    hdr.textContent = 'Property totals (unary token counts)';
+    dobj.appendChild(hdr);
+
+    properties.forEach(prop => {
+      const count = objs[prop] || 0;
+      const cond  = constraints[prop] || {};
+      const max   = cond.max != null ? cond.max : null;
+      const min   = cond.min != null ? cond.min : null;
+      const col   = objColor(prop);
+
+      // Status indicator
+      let status = '●', statusCol = '#64748b';
+      if (max != null) {
+        status    = count <= max ? '✓' : '✗';
+        statusCol = count <= max ? '#22c55e' : '#ef4444';
+      }
+      if (min != null) {
+        status    = count >= min ? '✓' : '✗';
+        statusCol = count >= min ? '#22c55e' : '#ef4444';
+      }
+
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin:3px 0';
+
+      // Label row
+      const row = document.createElement('div');
+      row.className = 'obj-row';
+      const constraint = max != null ? `max ${max}` : min != null ? `min ${min}` : 'unconstrained';
+      row.innerHTML = `
+        <div class="obj-dot" style="background:${col}"></div>
+        <span class="obj-name" style="color:${col}">${prop}</span>
+        <span class="obj-count" style="font-size:13px;font-weight:700;color:${col}">${count}</span>
+        <span style="font-size:10px;color:${statusCol};margin-left:4px">${status} ${constraint}</span>`;
+      wrap.appendChild(row);
+
+      // Visual bar (if constrained)
+      if (max != null || min != null) {
+        const barMax  = max != null ? Math.max(max * 1.2, count) : count * 1.2 || 1;
+        const fillPct = Math.min(100, (count / barMax) * 100);
+        const limitPct = max != null ? (max / barMax) * 100 : (min / barMax) * 100;
+        const bar = document.createElement('div');
+        bar.style.cssText = `position:relative;height:6px;background:#21293a;border-radius:3px;margin:3px 0 3px 16px;overflow:hidden`;
+        bar.innerHTML = `
+          <div style="position:absolute;left:0;top:0;height:100%;width:${fillPct}%;
+               background:${statusCol};border-radius:3px;transition:width .3s"></div>
+          <div style="position:absolute;top:-1px;left:${limitPct}%;height:8px;width:2px;
+               background:#ffffff44;border-radius:1px"></div>`;
+        wrap.appendChild(bar);
+      }
+
+      dobj.appendChild(wrap);
+    });
+  }
+
+  // --- Other semantic tokens ---
+  const semantic = Object.entries(objs).filter(([k]) =>
+    !k.startsWith('yes_') && !k.startsWith('no_') && !properties.includes(k) && !k.startsWith('d_'));
+  if (semantic.length) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:10px;color:var(--muted);margin:8px 0 2px;letter-spacing:.06em;text-transform:uppercase';
+    hdr.textContent = 'Control tokens';
+    dobj.appendChild(hdr);
+    semantic.forEach(([k, v]) => {
+      const row = document.createElement('div');
+      row.className = 'obj-row';
+      row.innerHTML = `<div class="obj-dot" style="background:${objColor(k)}"></div>
+        <span class="obj-name">${objLabel(k)} ${k}</span>
+        <span class="obj-count">× ${v}</span>`;
+      dobj.appendChild(row);
+    });
+  }
+
+  if (!Object.keys(objs).length) {
+    dobj.innerHTML += '<div style="color:var(--muted);font-size:12px">(empty multiset)</div>';
+  }
+
+  // ── Rules section ──────────────────────────────────────────────────────
+  const drules = document.getElementById('detailRules');
+  drules.innerHTML = '<h3>Rule Applicability</h3>';
+  if (simData.rules) {
+    simData.rules.filter(r=>r.applies_to===node.label).forEach(rule => {
+      const applicable = checkRuleApplicable(rule, objs);
+      const row = document.createElement('div');
+      row.className = 'rule-row ' + (applicable ? 'ok' : 'no');
+      row.innerHTML = `<span>${applicable?'✓':'○'}</span> ${rule.name}`;
+      drules.appendChild(row);
+    });
+  }
+
+  // History section
+  const dhist = document.getElementById('detailHistory');
+  dhist.innerHTML = '<h3>Event History</h3>';
+  simData.steps.forEach((step, si) => {
+    (step.events||[]).forEach(ev => {
+      if ((ev.membrane_id||ev.parent_id) === memId ||
+          ev.daughter_a_id === memId || ev.daughter_b_id === memId) {
+        const el = document.createElement('div');
+        el.className = 'ev-item';
+        el.textContent = `Step ${step.step}: ${ev.event.replace('_',' ')} — ${ev.rule||''}`;
+        dhist.appendChild(el);
+      }
+    });
+  });
+  if (dhist.children.length === 1) {
+    const el = document.createElement('div');
+    el.className = 'ev-item'; el.textContent = '(no events for this membrane)';
+    dhist.appendChild(el);
+  }
+}
+
+function checkRuleApplicable(rule, objs) {
+  if (rule.type === 'division') {
+    return (objs[rule.trigger]||0) >= 1;
+  }
+  if (rule.lhs) {
+    return Object.entries(rule.lhs).every(([k,v]) => (objs[k]||0) >= v);
+  }
+  return false;
+}
+
+function drawDetailCanvas() {
+  if (!selectedId || !simData) return;
+  const dc = document.getElementById('detailCanvas');
+  const W = dc.width, H = dc.height;
+  dctx.clearRect(0,0,W,H);
+
+  const root = simData.steps[curStep].tree;
+  const node = findNodeById(root, selectedId);
+  if (!node) return;
+
+  const cx = W/2, cy = H/2+8, r = Math.min(W,H)*0.42;
+
+  // Draw membrane
+  const objs = node.objects||{};
+  const hasEval = objs.eval > 0;
+  const hasSol  = objs.solution > 0;
+  let border = '#1e3a5f';
+  if (hasEval) border = '#a855f7';
+  if (hasSol)  border = '#eab308';
+
+  drawGlow(dctx, cx, cy, r, border, 20, 0.4);
+  dctx.beginPath(); dctx.arc(cx, cy, r, 0, Math.PI*2);
+  dctx.fillStyle = '#0a0f1a'; dctx.fill();
+  dctx.strokeStyle = border; dctx.lineWidth = 2; dctx.stroke();
+
+  // Draw label or DNA
+  const dna = extractDna(node);
+  if (dna && dna.length > 0) {
+    const topY = cy - r + 15;
+    const fSize = 12;
+    dctx.font = `bold ${fSize}px monospace, 'Segoe UI'`;
+    dctx.textBaseline = 'middle';
+
+    const spans = dna.map(g => ({
+      text: (g.choice ? '✓' : '✗') + g.item,
+      color: g.choice ? '#22c55e' : '#ef4444'
+    }));
+
+    let contentW = 0;
+    const widths = spans.map(s => {
+      const w = dctx.measureText(s.text).width + 4;
+      contentW += w;
+      return w;
+    });
+
+    const brkW = dctx.measureText('[').width;
+    const totalW = contentW + brkW * 2 + 6;
+    const capH = fSize + 8;
+    const capX = cx - totalW / 2;
+    const capY = topY - capH / 2;
+
+    dctx.fillStyle = '#080d19ee';
+    dctx.beginPath();
+    dctx.roundRect(capX - 4, capY, totalW + 8, capH, 6);
+    dctx.fill();
+    dctx.strokeStyle = border + 'aa';
+    dctx.lineWidth = 1.5;
+    dctx.stroke();
+
+    let curX = capX;
+    dctx.fillStyle = '#64748b';
+    dctx.textAlign = 'left';
+    dctx.fillText('[', curX, topY);
+    curX += brkW + 2;
+
+    spans.forEach((span, i) => {
+      dctx.fillStyle = span.color;
+      dctx.fillText(span.text, curX, topY);
+      curX += widths[i];
+    });
+
+    dctx.fillStyle = '#64748b';
+    dctx.fillText(']', curX, topY);
+  } else {
+    dctx.fillStyle = border; dctx.font = '12px monospace';
+    dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
+    dctx.fillText(`[${node.label}]`, cx, cy - r + 14);
+  }
+
+  // Draw particles in detail canvas
+  const ph = physics[selectedId];
+  if (ph) {
+    ph.particles.forEach(p => {
+      // remap particle position to detail canvas space
+      const layout = computeLayout(curStep);
+      const pos = layout[selectedId]; if(!pos) return;
+      const scale = r / pos.r;
+      const dx = (p.x - pos.x) * scale;
+      const dy = (p.y - pos.y) * scale;
+
+      dctx.save();
+      dctx.globalAlpha = Math.min(1, p.alpha);
+      const col = objColor(p.key);
+      const pr2 = p.isProp ? Math.max(6, p.r * scale * 0.75) : Math.max(10, p.r * scale * 0.9);
+      const nx = cx + dx, ny = cy + dy;
+
+      // Glow
+      const glowR = p.isProp ? pr2 * 1.5 : pr2 * 2;
+      const g = dctx.createRadialGradient(nx,ny,0, nx,ny,glowR);
+      g.addColorStop(0, col + (p.isProp ? '33' : '55')); g.addColorStop(1,'transparent');
+      dctx.beginPath(); dctx.arc(nx,ny,glowR,0,Math.PI*2);
+      dctx.fillStyle=g; dctx.fill();
+
+      // Circle
+      dctx.beginPath(); dctx.arc(nx,ny,pr2,0,Math.PI*2);
+      dctx.fillStyle=col+(p.isProp ? '22' : '33'); dctx.fill();
+      dctx.strokeStyle=col; dctx.lineWidth=p.isProp ? 1 : 1.5; dctx.stroke();
+
+      // Label
+      dctx.fillStyle=col; dctx.font=`${p.isProp ? '' : 'bold '}${Math.max(7,pr2*0.85)}px Segoe UI`;
+      dctx.textAlign='center'; dctx.textBaseline='middle';
+      dctx.fillText(objLabel(p.key), nx, ny+0.5);
+      dctx.restore();
+    });
+  }
+}
+</script>
+</body>
+</html>

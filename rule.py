@@ -1,46 +1,53 @@
+"""
+rule.py — Evolution rule for P-Systems.
+"""
+
+
 class Rule:
     """
-    Represents an evolution/communication rule with verbose tracing.
+    Standard evolution/communication rule: u → v [target].
+    target: 'here' | 'out' | '<membrane_label>'
     """
     def __init__(self, name, lhs, rhs, target='here', condition=None):
-        self.name = name  # Human-readable name for logging
-        self.lhs = lhs    # Consumption pattern
-        self.rhs = rhs    # Production pattern
-        self.target = target  # 'here', 'out', or specific membrane label
-        self.condition = condition  # Optional guard function
+        self.name      = name
+        self.lhs       = lhs       # {obj: count}
+        self.rhs       = rhs       # {obj: count}
+        self.target    = target
+        self.condition = condition
 
     def is_applicable(self, membrane):
-        # 1. Check if multiset requirements (LHS) are met
-        for obj, count in self.lhs.items():
-            if membrane.get_count(obj) < count:
+        for obj, cnt in self.lhs.items():
+            if membrane.get_count(obj) < cnt:
                 return False
-        
-        # 2. Check optional custom guard condition
         if self.condition and not self.condition(membrane):
             return False
-            
         return True
 
-    def apply(self, membrane, system):
-        print(f"\n⚡ [RULE FIRED: '{self.name}'] in Membrane '{membrane.label}'")
-        print(f"   - Consuming LHS objects: {self.lhs}")
-        
-        # Consume LHS objects
-        for obj, count in self.lhs.items():
-            membrane.remove_object(obj, count)
-        
-        # Resolve target destination
-        target_membrane = self.resolve_target(membrane, system)
-        print(f"   - Producing RHS objects: {self.rhs} -> Target: '{target_membrane.label}'")
-        
-        # Produce RHS objects
-        for obj, count in self.rhs.items():
-            target_membrane.add_object(obj, count)
+    def apply(self, membrane, system, log):
+        log.append({
+            "event": "rule_fired",
+            "rule":           self.name,
+            "membrane_id":    membrane.mem_id,
+            "membrane_label": membrane.label,
+            "consumed":       dict(self.lhs),
+            "produced":       dict(self.rhs),
+            "target":         self.target,
+        })
+        for obj, cnt in self.lhs.items():
+            membrane.remove_object(obj, cnt)
+        dest = self._resolve(membrane, system)
+        for obj, cnt in self.rhs.items():
+            dest.add_object(obj, cnt)
 
-    def resolve_target(self, current_membrane, system):
+    def _resolve(self, mem, system):
         if self.target == 'here':
-            return current_membrane
-        elif self.target == 'out':
-            return current_membrane.parent if current_membrane.parent else current_membrane
-        else:
-            return system.find_membrane(self.target)
+            return mem
+        if self.target == 'out':
+            return mem.parent if mem.parent else mem
+        return system.find_membrane(self.target) or mem
+
+    def meta(self):
+        return {
+            "name": self.name, "type": "evolution",
+            "lhs": self.lhs, "rhs": self.rhs, "target": self.target,
+        }

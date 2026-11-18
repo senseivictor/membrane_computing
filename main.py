@@ -1,75 +1,127 @@
-from membrane import Membrane
-from rule import Rule
-from psystem import PSystem
+"""
+main.py — Generic P-System knapsack solver with multi-property items.
 
-def solve_knapsack():
-    print("=== INITIALIZING P SYSTEM KNAPSACK SOLVER ===")
-    
-    # 1. Setup Membrane Structure
-    # Skin is the outer environment container
-    skin = Membrane("skin")
-    # Cell is the inner processing compartment
-    cell = Membrane("cell", parent=skin)
-    skin.children.append(cell)
+▸ CONFIGURE HERE — add any number of items and any number of properties.
+  Properties are encoded as UNARY TOKENS inside membranes:
+    item with weight=3  →  3 copies of the 'weight' object in the membrane
+    item with cost=5    →  5 copies of the 'cost'   object in the membrane
 
-    print(f"Created Membrane Hierarchy: [{skin.label} -> [{cell.label}]]")
+  Constraints check the total token counts at evaluation time.
+  Add/remove properties freely — the builder handles everything automatically.
+"""
 
-    # Initial objects in the cell: 'start' triggers the generation phase
-    cell.add_object("start", 1)
+from api import PSystemAPI
 
-    # Knapsack Configuration: Capacity = 5
-    # Item 1: Weight 2, Value 3
-    # Item 2: Weight 3, Value 4
-    # Item 3: Weight 4, Value 5
-    
-    psys = PSystem(skin)
 
-    # Rule 1: Generation phase - Splits 'start' into evaluation tracker and 3 choice tokens
-    psys.add_rule("cell", Rule(
-        name="Generation_Phase",
-        lhs={"start": 1},
-        rhs={"evaluate": 1, "choice_1": 1, "choice_2": 1, "choice_3": 1},
-        target="here"
-    ))
+# ══════════════════════════════════════════════════════════════════════════
+#  CONFIGURATION  — edit freely
+# ══════════════════════════════════════════════════════════════════════════
 
-    # Rules 2a & 2b: Item 1 choices (Include vs Skip)
-    psys.add_rule("cell", Rule(name="Item1_Include", lhs={"choice_1": 1}, rhs={"include_1": 1}, target="here"))
-    psys.add_rule("cell", Rule(name="Item1_Skip", lhs={"choice_1": 1}, rhs={"skip_1": 1}, target="here"))
+ITEMS = [
+    {"weight": 2, "cost": 3},   # Item 1
+    {"weight": 3, "cost": 4},   # Item 2
+    {"weight": 4, "cost": 5},   # Item 3
+]
 
-    # Rules 3a & 3b: Item 2 choices (Include vs Skip)
-    psys.add_rule("cell", Rule(name="Item2_Include", lhs={"choice_2": 1}, rhs={"include_2": 1}, target="here"))
-    psys.add_rule("cell", Rule(name="Item2_Skip", lhs={"choice_2": 1}, rhs={"skip_2": 1}, target="here"))
+CONSTRAINTS = {
+    "weight": {"max": 5},        # total weight of chosen items ≤ 5
+    # "cost":   {"min": 4},      # uncomment to also require total cost ≥ 4
+    # "volume": {"max": 10},     # add more properties & constraints freely
+}
 
-    # Rules 4a & 4b: Item 3 choices (Include vs Skip)
-    psys.add_rule("cell", Rule(name="Item3_Include", lhs={"choice_3": 1}, rhs={"include_3": 1}, target="here"))
-    psys.add_rule("cell", Rule(name="Item3_Skip", lhs={"choice_3": 1}, rhs={"skip_3": 1}, target="here"))
+# ══════════════════════════════════════════════════════════════════════════
+#  BUILDER  — no need to edit below
+# ══════════════════════════════════════════════════════════════════════════
 
-    # Guard condition: Ensures all item choice tokens have been resolved to either include or skip
-    def ready_to_evaluate(mem):
-        item1_resolved = (mem.get_count("include_1") + mem.get_count("skip_1") == 1)
-        item2_resolved = (mem.get_count("include_2") + mem.get_count("skip_2") == 1)
-        item3_resolved = (mem.get_count("include_3") + mem.get_count("skip_3") == 1)
-        has_eval = mem.get_count("evaluate") > 0
-        return has_eval and item1_resolved and item2_resolved and item3_resolved
+def build_knapsack(items, constraints):
+    """
+    Automatically construct a P-System for the knapsack problem.
 
-    # Rule 5: Evaluation & Communication - Sends a signal out to the skin membrane once choices are locked
-    psys.add_rule("cell", Rule(
-        name="Send_Solution_To_Skin",
-        lhs={"evaluate": 1},
-        rhs={"check_solution": 1},
-        target="out",
-        condition=ready_to_evaluate
-    ))
+    For N items this produces:
+      • N division rules, one per item.
+        - 'yes' daughter: choice marker yes_i + all property tokens (unary)
+        - 'no'  daughter: choice marker no_i  (no property tokens added)
+      • 2 evaluation rules: Accept_Valid / Discard_Invalid
+        Guard functions count property tokens and check constraints.
+    """
+    n   = len(items)
+    all_props = sorted({k for item in items for k in item})
 
-    # Run the simulation
-    psys.run(max_steps=5)
+    api = PSystemAPI(
+        f"Knapsack · {n} items · "
+        + ", ".join(f"{p}≤{c['max']}" if 'max' in c else f"{p}≥{c['min']}"
+                    for p, c in constraints.items())
+    )
 
-    # Final Inspections
-    print("\n========================================")
-    print("🏁 SIMULATION COMPLETED - FINAL STATES")
-    print("========================================")
-    print(skin)
-    print(cell)
+    skin = api.skin()
+    api.child(skin, "gen", objects={"d_1": 1})
 
-if __name__ == "__main__":
-    solve_knapsack()
+    # ── Division rules ─────────────────────────────────────────────────────
+    for idx, item in enumerate(items):
+        num     = idx + 1
+        trigger = f"d_{num}"
+        nxt     = "eval" if num == n else f"d_{num+1}"
+
+        # 'yes' daughter: include this item → place its property tokens (unary)
+        yes_objs = {f"yes_{num}": 1, nxt: 1}
+        for prop, val in item.items():
+            yes_objs[prop] = yes_objs.get(prop, 0) + int(val)
+
+        # 'no' daughter: skip this item → no property tokens
+        no_objs = {f"no_{num}": 1, nxt: 1}
+
+        api.division_rule("gen",
+                          trigger=trigger,
+                          daughter_a=yes_objs,
+                          daughter_b=no_objs,
+                          name=f"Divide_Item{num}")
+
+    # ── Evaluation guards ──────────────────────────────────────────────────
+    def make_guards(constraints):
+        def _check(mem):
+            for prop, conds in constraints.items():
+                count = mem.get_count(prop)
+                if "max" in conds and count > conds["max"]:
+                    return False
+                if "min" in conds and count < conds["min"]:
+                    return False
+            return True
+
+        def valid_and_ready(mem):
+            return mem.get_count("eval") > 0 and _check(mem)
+
+        def invalid(mem):
+            return mem.get_count("eval") > 0 and not _check(mem)
+
+        return valid_and_ready, invalid
+
+    valid_guard, invalid_guard = make_guards(constraints)
+
+    api.evolution_rule("gen", name="Accept_Valid_Subset",
+                       lhs={"eval": 1}, rhs={"solution": 1},
+                       target="out", condition=valid_guard)
+
+    api.evolution_rule("gen", name="Discard_Invalid_Subset",
+                       lhs={"eval": 1}, rhs={},
+                       target="here", condition=invalid_guard)
+
+    return api, all_props
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  RUN
+# ══════════════════════════════════════════════════════════════════════════
+
+api, all_props = build_knapsack(ITEMS, CONSTRAINTS)
+
+api.run(max_steps=len(ITEMS) + 3)
+
+# Export — include item/constraint metadata for the visualizer
+api.export("simulation_data.json", metadata={
+    "items":       ITEMS,
+    "constraints": CONSTRAINTS,
+    "properties":  all_props,   # list of property names (e.g. ['cost','weight'])
+})
+
+print(f"\nValid subsets found: {api.result_count}")
+print("Open visualizer.html in a browser to watch the simulation.")

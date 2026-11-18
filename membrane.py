@@ -1,26 +1,123 @@
+"""
+membrane.py — P-System membrane with unique IDs, division, and dissolution.
+"""
+
+_id_counter = 0
+
+def _next_id(label):
+    global _id_counter
+    _id_counter += 1
+    return f"{label}#{_id_counter}"
+
+
 class Membrane:
     def __init__(self, label, parent=None):
-        self.label = label
-        self.parent = parent
+        self.label   = label
+        self.mem_id  = _next_id(label)
+        self.parent  = parent
         self.children = []
-        self.objects = {}  # Multiset: dict of {object_name: count}
+        self.objects  = {}
+        self.alive    = True
+
+    # ── Multiset ──────────────────────────────────────────────────────────────
 
     def add_object(self, obj, count=1):
         self.objects[obj] = self.objects.get(obj, 0) + count
-        print(f"   [MEMBRANE '{self.label}'] ➕ Added object: '{obj}' (count: {count}). Current state: {self.objects}")
 
     def remove_object(self, obj, count=1):
         if self.objects.get(obj, 0) >= count:
             self.objects[obj] -= count
-            print(f"   [MEMBRANE '{self.label}'] ➖ Consumed/Removed object: '{obj}' (count: {count}).")
             if self.objects[obj] == 0:
                 del self.objects[obj]
             return True
-        print(f"   [MEMBRANE '{self.label}'] ❌ Failed to remove '{obj}' (requested {count}, available {self.objects.get(obj, 0)}).")
         return False
 
     def get_count(self, obj):
         return self.objects.get(obj, 0)
 
+    # ── Structure ─────────────────────────────────────────────────────────────
+
+    def add_child(self, child):
+        child.parent = self
+        self.children.append(child)
+
+    def dissolve(self, log):
+        """Push all objects + children to parent, mark dead."""
+        if not self.parent:
+            return
+        log.append({
+            "event": "membrane_dissolved",
+            "membrane_id": self.mem_id,
+            "membrane_label": self.label,
+            "objects_released": dict(self.objects)
+        })
+        for obj, count in self.objects.items():
+            self.parent.add_object(obj, count)
+        for child in self.children:
+            child.parent = self.parent
+            self.parent.children.append(child)
+        self.parent.children.remove(self)
+        self.objects = {}
+        self.children = []
+        self.alive = False
+
+    def divide(self, objects_a, objects_b, log):
+        """
+        Split self into two daughter membranes.
+        Returns (daughter_a, daughter_b).
+        """
+        def _clone(src, new_parent):
+            m = Membrane(src.label, new_parent)
+            m.objects = dict(src.objects)
+            for child in src.children:
+                m.add_child(_clone(child, m))
+            return m
+
+        da = Membrane(self.label, self.parent)
+        da.objects = dict(objects_a)
+        for child in self.children:
+            da.add_child(_clone(child, da))
+
+        db = Membrane(self.label, self.parent)
+        db.objects = dict(objects_b)
+        for child in self.children:
+            db.add_child(_clone(child, db))
+
+        log.append({
+            "event": "membrane_divided",
+            "parent_id": self.mem_id,
+            "parent_label": self.label,
+            "daughter_a_id": da.mem_id,
+            "daughter_b_id": db.mem_id,
+            "daughter_a_objects": dict(objects_a),
+            "daughter_b_objects": dict(objects_b),
+        })
+
+        idx = self.parent.children.index(self)
+        self.parent.children[idx:idx+1] = [da, db]
+        self.alive = False
+        return da, db
+
+    def _get_dna(self):
+        genes = []
+        for k in self.objects:
+            if k.startswith('yes_'):
+                idx = int(k.split('_')[1])
+                genes.append({'item': idx, 'choice': True, 'label': f'✓{idx}'})
+            elif k.startswith('no_'):
+                idx = int(k.split('_')[1])
+                genes.append({'item': idx, 'choice': False, 'label': f'✗{idx}'})
+        genes.sort(key=lambda g: g['item'])
+        return genes
+
+    def snapshot(self):
+        return {
+            "id": self.mem_id,
+            "label": self.label,
+            "dna": self._get_dna(),
+            "objects": dict(self.objects),
+            "children": [c.snapshot() for c in self.children if c.alive]
+        }
+
     def __repr__(self):
-        return f"Membrane(label='{self.label}', Objects: {self.objects})"
+        return f"Membrane(id={self.mem_id!r}, objects={self.objects})"
