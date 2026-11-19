@@ -6,6 +6,7 @@ function EventLogAndWorkspace() {
       <div className="workspace">
         {/* Event log */}
         <div className="log-col">
+          <div id="gardenResult" className="garden-result" hidden></div>
           <div className="panel-title">Event Log</div>
           <div className="log-body" id="logBody"></div>
         </div>

@@ -25,6 +25,9 @@ function ConfigurationDialog() {
                   <tbody id="itemsTableBody"></tbody>
                 </table>
               </div>
+              <div id="gardenHelp" className="garden-help" hidden>
+                Each vegetable is one planting lot. Profit is yield × sell price − purchase and growing costs. Crops grow concurrently, so harvest time is the slowest selected crop. The preset picks highest profit, then the fastest harvest. Sample figures are editable; internally each space token represents 10 m², so the limit of 20 tokens is 200 m².
+              </div>
             </div>
       
             {/* Constraints section */}
@@ -43,6 +46,7 @@ function ConfigurationDialog() {
                 <button className="preset-btn" id="preset3">Standard (3 Items, W≤5)</button>
                 <button className="preset-btn" id="preset4">4 Items (16 Membranes, W≤6)</button>
                 <button className="preset-btn" id="presetMulti">3 Properties (W+Cost+Vol)</button>
+                <button className="preset-btn" id="presetGreenhouse">Greenhouse Profit (6 Vegetables, ≤200 m²)</button>
               </div>
             </div>
           </div>

@@ -56,6 +56,13 @@ input[type=range]{accent-color:var(--blue);width:100px}
 .log-body::-webkit-scrollbar{width:4px}
 .log-body::-webkit-scrollbar-track{background:transparent}
 .log-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.garden-result{padding:10px 12px;border-bottom:1px solid var(--border);background:#101a19;font-size:11px;line-height:1.5;flex-shrink:0}
+.garden-result[hidden]{display:none}
+.garden-result strong{color:#34d399}
+.garden-result .garden-crops{color:var(--text);margin-top:4px}
+.garden-result .garden-meta{color:var(--muted);margin-top:4px;font-size:10px}
+.garden-help{color:var(--muted);font-size:11px;line-height:1.5;margin-top:8px}
+.garden-help[hidden]{display:none}
 
 .log-step{
   font-size:11px;font-weight:700;color:var(--blue);padding:6px 8px 3px;

@@ -167,11 +167,14 @@ let currentConfig = {
   constraints: {
     weight: { max: 5 }
   },
-  properties: ["weight", "cost"]
+  properties: ["weight", "cost"],
+  itemNames: null,
+  modelProperties: null,
+  preset: null
 };
 
 // Pure JavaScript P-System simulation engine (faithful to Păun's active membrane model)
-function runSimulationFromConfig(items, constraints) {
+function runSimulationFromConfig(items, constraints, itemNames = [], modelProperties = null, preset = null) {
   let idCounter = 0;
   function nextId(label) {
     idCounter++;
@@ -306,7 +309,13 @@ function runSimulationFromConfig(items, constraints) {
   skin.children.push(gen0);
 
   const n = items.length;
-  const allProps = Array.from(new Set([...items.flatMap(it => Object.keys(it)), ...constraintSpecs.map(spec => spec.property)])).sort();
+  const allItemProps = Array.from(new Set(items.flatMap(it => Object.keys(it))));
+  const simulationProps = modelProperties || allItemProps;
+  const allProps = Array.from(new Set([...simulationProps, ...constraintSpecs.map(spec => spec.property)])).sort();
+  const contributionFor = (item, property) => {
+    if (preset === 'greenhouse' && property === 'space') return Math.ceil((Number(item.space) || 0) / 10);
+    return Number(item[property]) || 0;
+  };
 
   // Snapshot helper — preserves slotIdx, slotCount and alive status
   function snapshotTree(node) {
@@ -361,8 +370,9 @@ function runSimulationFromConfig(items, constraints) {
       // Daughter A (yes) — include this item & add its unary property tokens
       const aObjs = Object.assign({}, baseObjs);
       aObjs[nxt] = (aObjs[nxt] || 0) + 1;
-      for (const [p, val] of Object.entries(item)) {
-        aObjs[p] = (aObjs[p] || 0) + Number(val);
+      for (const p of simulationProps) {
+        const amount = contributionFor(item, p);
+        if (amount) aObjs[p] = (aObjs[p] || 0) + amount;
       }
 
       // Daughter B (no) — skip this item (no property tokens)
@@ -371,8 +381,9 @@ function runSimulationFromConfig(items, constraints) {
 
       // Inherit and extend DNA chromosome
       const pDna = mem.dna || [];
-      const daDna = pDna.concat([{ item: num, choice: true, label: `✓${num}` }]);
-      const dbDna = pDna.concat([{ item: num, choice: false, label: `✗${num}` }]);
+      const itemName = itemNames[num - 1] || `Item ${num}`;
+      const daDna = pDna.concat([{ item: num, name: itemName, choice: true, label: `✓${itemName}` }]);
+      const dbDna = pDna.concat([{ item: num, name: itemName, choice: false, label: `✗${itemName}` }]);
 
       const pSlot = mem.slotIdx !== undefined ? mem.slotIdx : 0;
 
@@ -500,6 +511,96 @@ function runSimulationFromConfig(items, constraints) {
   });
   stepNumber++;
   history.push({ step: stepNumber, title: "Cell Dissolution", events: destrEvents, tree: snapshotTree(skin) });
+
+  let optimizationSummary = null;
+  const optimizerRules = [];
+  if (preset === 'greenhouse') {
+    const compareUnary = (leftCount, rightCount, metric) => {
+      const leftKey = `${metric}_left`;
+      const rightKey = `${metric}_right`;
+      const phaseKey = `${metric}_comparing`;
+      const region = { id: `compare_${metric}`, label: 'optimizer', parent: null, children: [], alive: true,
+        objects: { [leftKey]: Math.max(0, Math.floor(leftCount)), [rightKey]: Math.max(0, Math.floor(rightCount)), [phaseKey]: 1 } };
+      const cancelRule = { name: `Cancel_One_${metric}_Token_Each`, type: 'evolution',
+        lhs: { [leftKey]: 1, [rightKey]: 1, [phaseKey]: 1 }, rhs: { [phaseKey]: 1 }, target: 'here', applies_to: 'optimizer' };
+      const scratchEvents = [];
+      while (applyRule(region, cancelRule, scratchEvents)) scratchEvents.length = 0;
+      const leftRule = { name: `Select_Left_On_More_${metric}`, type: 'evolution',
+        lhs: { [leftKey]: 1, [phaseKey]: 1 }, rhs: { [`${metric}_left_wins`]: 1 }, target: 'here', applies_to: 'optimizer' };
+      const rightRule = { name: `Select_Right_On_More_${metric}`, type: 'evolution',
+        lhs: { [rightKey]: 1, [phaseKey]: 1 }, rhs: { [`${metric}_right_wins`]: 1 }, target: 'here', applies_to: 'optimizer' };
+      const tieRule = { name: `Continue_On_Equal_${metric}`, type: 'evolution',
+        lhs: { [phaseKey]: 1 }, rhs: { [`${metric}_equal`]: 1 }, target: 'here', applies_to: 'optimizer' };
+      [cancelRule, leftRule, rightRule, tieRule].forEach(rule => {
+        if (!optimizerRules.some(existing => existing.name === rule.name)) optimizerRules.push(rule);
+      });
+      if (applyRule(region, leftRule, [])) return 'left';
+      if (applyRule(region, rightRule, [])) return 'right';
+      applyRule(region, tieRule, []);
+      return 'equal';
+    };
+
+    const validCandidates = getLiving(skin).filter(mem => mem.label === 'gen' && mem.dna);
+    const plans = validCandidates.map(mem => {
+      const selected = mem.dna.filter(gene => gene.choice).map(gene => gene.item - 1);
+      let harvestDays = 0;
+      let revenue = 0;
+      let cost = 0;
+      let totalSpace = 0;
+      selected.forEach(index => {
+        const item = items[index];
+        const timeResult = compareUnary(item.grow_days || 0, harvestDays, 'Harvest_Time');
+        if (timeResult === 'left') harvestDays = Number(item.grow_days) || 0;
+        revenue += (Number(item.yield_kg) || 0) * (Number(item.sell_price) || 0);
+        cost += (Number(item.buy_cost) || 0) + (Number(item.grow_cost) || 0);
+        totalSpace += Number(item.space) || 0;
+      });
+      return {
+        membraneId: mem.id,
+        itemIds: selected.map(index => index + 1),
+        crops: selected.map(index => itemNames[index] || `Item ${index + 1}`),
+        space: totalSpace,
+        harvestDays,
+        revenue,
+        cost,
+        profit: revenue - cost
+      };
+    });
+
+    let bestPlans = [];
+    plans.forEach(plan => {
+      if (!bestPlans.length) { bestPlans = [plan]; return; }
+      const incumbent = bestPlans[0];
+      // Compare profits by cross-adding nonnegative revenue and cost tallies,
+      // then use a reversed time comparison so the shorter harvest wins.
+      const profitResult = compareUnary(plan.revenue + incumbent.cost, incumbent.revenue + plan.cost, 'Net_Profit');
+      if (profitResult === 'left') bestPlans = [plan];
+      else if (profitResult === 'equal') {
+        const timeResult = compareUnary(plan.harvestDays, incumbent.harvestDays, 'Harvest_Tie_Break');
+        if (timeResult === 'right') bestPlans = [plan];
+        else if (timeResult === 'equal') bestPlans.push(plan);
+      }
+    });
+    const spaceLimit = constraints.space?.max == null ? null : Number(constraints.space.max) * 10;
+    optimizationSummary = {
+      plans: bestPlans,
+      feasibleCount: plans.length,
+      spaceLimit,
+      bestMembraneId: bestPlans[0]?.membraneId || null
+    };
+    const best = bestPlans[0];
+    const resultEvents = [{
+      event: 'optimization_result',
+      rule: 'Maximize_Profit_Then_Minimize_Harvest_Time',
+      membrane_id: best?.membraneId,
+      description: best
+        ? `Selected ${best.crops.length ? best.crops.join(', ') : 'no crops'}: €${best.profit} estimated profit, ${best.space} m², ${best.harvestDays} days to first harvest.`
+        : 'No feasible greenhouse plan survived the space constraint.'
+    }];
+    stepNumber++;
+    history.push({ step: stepNumber, title: 'Greenhouse Optimization', events: resultEvents, tree: snapshotTree(skin) });
+  }
+
   // Construct rules meta for display
   const rulesMeta = [];
   for (let idx = 0; idx < n; idx++) {
@@ -507,8 +608,9 @@ function runSimulationFromConfig(items, constraints) {
     const item = items[idx];
     const nxt = (num === n) ? "eval" : `d_${num + 1}`;
     const dA = { [nxt]: 1 };
-    for (const [p, val] of Object.entries(item)) {
-      dA[p] = Number(val);
+    for (const p of simulationProps) {
+      const amount = contributionFor(item, p);
+      if (amount) dA[p] = amount;
     }
     const dB = { [nxt]: 1 };
     rulesMeta.push({
@@ -527,20 +629,30 @@ function runSimulationFromConfig(items, constraints) {
     name: "Cell_Dissolution (delta)", type: "dissolution",
     lhs: { [deltaObject]: 1 }, rhs: {}, target: "here", applies_to: "gen"
   });
+  rulesMeta.push(...optimizerRules);
   return {
     title: `Knapsack · ${n} items · ` + Object.entries(constraints).map(([p, c]) => c.max != null ? `${p}≤${c.max}` : `${p}≥${c.min}`).join(", "),
     rules: rulesMeta,
     steps: history,
     metadata: {
       items: items,
+      itemNames: itemNames,
       constraints: constraints,
-      properties: allProps
+      properties: allProps,
+      preset: preset,
+      optimization: optimizationSummary
     }
   };
 }
 
 function executeLiveSimulation() {
-  simData = runSimulationFromConfig(currentConfig.items, currentConfig.constraints);
+  simData = runSimulationFromConfig(
+    currentConfig.items,
+    currentConfig.constraints,
+    currentConfig.itemNames || [],
+    currentConfig.modelProperties,
+    currentConfig.preset
+  );
   initSim();
 }
 
@@ -570,8 +682,13 @@ function renderConfigModal() {
   // Table header
   const thead = document.getElementById("itemsTableHead");
   let thHtml = `<tr><th style="width:70px">Item</th>`;
+  const propertyHeadings = {
+    grow_days: 'Grow days', buy_cost: 'Buy cost (€)', grow_cost: 'Grow cost (€)',
+    space: 'Space (m²)', yield_kg: 'Yield (kg)', sell_price: 'Sell price (€/kg)',
+    profit: 'Profit (€)'
+  };
   props.forEach(p => {
-    thHtml += `<th>${p.charAt(0).toUpperCase() + p.slice(1)}</th>`;
+    thHtml += `<th>${propertyHeadings[p] || p.charAt(0).toUpperCase() + p.slice(1)}</th>`;
   });
   thHtml += `<th style="width:36px"></th></tr>`;
   thead.innerHTML = thHtml;
@@ -581,10 +698,12 @@ function renderConfigModal() {
   tbody.innerHTML = "";
   items.forEach((item, idx) => {
     const tr = document.createElement("tr");
-    let rowHtml = `<td style="font-weight:600;color:#93c5fd">Item ${idx + 1}</td>`;
+    const itemName = currentConfig.itemNames?.[idx] || `Item ${idx + 1}`;
+    let rowHtml = `<td style="font-weight:600;color:#93c5fd">${itemName}</td>`;
     props.forEach(p => {
       const val = item[p] != null ? item[p] : 1;
-      rowHtml += `<td><input type="number" min="0" value="${val}" data-idx="${idx}" data-prop="${p}" class="cfg-item-val"></td>`;
+      const readOnly = currentConfig.preset === 'greenhouse' && p === 'profit' ? 'readonly title="Calculated from yield and costs"' : '';
+      rowHtml += `<td><input type="number" min="0" value="${val}" data-idx="${idx}" data-prop="${p}" class="cfg-item-val" ${readOnly}></td>`;
     });
     rowHtml += `<td><button class="del-row-btn" data-del-item="${idx}" title="Remove item">✕</button></td>`;
     tr.innerHTML = rowHtml;
@@ -603,8 +722,10 @@ function renderConfigModal() {
       const val = isMax ? cond.max : cond.min;
       const row = document.createElement("div");
       row.className = "c-row";
+      const constraintLabel = currentConfig.preset === 'greenhouse' && prop === 'space'
+        ? 'Space (10 m²/unit)' : prop;
       row.innerHTML = `
-        <span style="min-width:70px;color:var(--blue);font-weight:600">${prop}</span>
+        <span style="min-width:70px;color:var(--blue);font-weight:600">${constraintLabel}</span>
         <select data-c-prop="${prop}" class="cfg-c-type">
           <option value="max" ${isMax ? "selected" : ""}>≤ (maximum threshold)</option>
           <option value="min" ${!isMax ? "selected" : ""}>≥ (minimum threshold)</option>
@@ -627,6 +748,11 @@ function renderConfigModal() {
   } else {
     estEl.style.color = "var(--muted)";
   }
+  document.getElementById('gardenHelp').hidden = currentConfig.preset !== 'greenhouse';
+  if (currentConfig.preset === 'greenhouse') {
+    estEl.textContent = `${n} vegetables → ${count} combinations · space ≤ 200 m²`;
+    estEl.style.color = 'var(--muted)';
+  }
 }
 
 // Read current inputs from modal and update currentConfig
@@ -640,6 +766,12 @@ function saveModalInputs() {
       currentConfig.items[idx][prop] = val;
     }
   });
+
+  if (currentConfig.preset === 'greenhouse') {
+    currentConfig.items.forEach(item => {
+      item.profit = (Number(item.yield_kg) * Number(item.sell_price)) - Number(item.buy_cost) - Number(item.grow_cost);
+    });
+  }
 
   // Read constraints
   const newConstraints = {};
@@ -659,6 +791,7 @@ document.getElementById("btnAddItem").addEventListener("click", () => {
   const newItem = {};
   currentConfig.properties.forEach(p => newItem[p] = 2);
   currentConfig.items.push(newItem);
+  if (currentConfig.itemNames) currentConfig.itemNames.push(`Vegetable ${currentConfig.items.length}`);
   renderConfigModal();
 });
 
@@ -669,6 +802,7 @@ document.getElementById("btnAddProp").addEventListener("click", () => {
   if (!clean || currentConfig.properties.includes(clean)) return;
   saveModalInputs();
   currentConfig.properties.push(clean);
+  if (currentConfig.modelProperties) currentConfig.modelProperties.push(clean);
   currentConfig.items.forEach(it => it[clean] = 1);
   renderConfigModal();
 });
@@ -683,6 +817,7 @@ document.getElementById("itemsTableBody").addEventListener("click", e => {
       return;
     }
     currentConfig.items.splice(idx, 1);
+    if (currentConfig.itemNames) currentConfig.itemNames.splice(idx, 1);
     renderConfigModal();
   }
 });
@@ -747,6 +882,25 @@ document.getElementById("presetMulti").addEventListener("click", () => {
   renderConfigModal();
 });
 
+document.getElementById("presetGreenhouse").addEventListener("click", () => {
+  currentConfig = {
+    items: [
+      { grow_days: 80, buy_cost: 20, grow_cost: 80, space: 50, yield_kg: 150, sell_price: 3, profit: 350 },
+      { grow_days: 60, buy_cost: 15, grow_cost: 65, space: 40, yield_kg: 180, sell_price: 2, profit: 280 },
+      { grow_days: 100, buy_cost: 25, grow_cost: 75, space: 60, yield_kg: 100, sell_price: 4, profit: 300 },
+      { grow_days: 45, buy_cost: 10, grow_cost: 40, space: 30, yield_kg: 120, sell_price: 1, profit: 70 },
+      { grow_days: 75, buy_cost: 10, grow_cost: 20, space: 40, yield_kg: 100, sell_price: 2, profit: 170 },
+      { grow_days: 40, buy_cost: 10, grow_cost: 30, space: 20, yield_kg: 80, sell_price: 2, profit: 120 }
+    ],
+    itemNames: ['Tomato', 'Cucumber', 'Pepper', 'Lettuce', 'Carrot', 'Spinach'],
+    constraints: { space: { max: 20 } },
+    properties: ['grow_days', 'buy_cost', 'grow_cost', 'space', 'yield_kg', 'sell_price', 'profit'],
+    modelProperties: ['space'],
+    preset: 'greenhouse'
+  };
+  renderConfigModal();
+});
+
 // Run from modal
 document.getElementById("btnRunConfig").addEventListener("click", () => {
   saveModalInputs();
@@ -777,10 +931,36 @@ function initSim() {
   document.getElementById('stepLabel').textContent = `Step 0 / ${steps.length-1}`;
 
   buildLogPanel();
+  renderGardenResult();
   // Pre-build physics for step 0
   const L = computeLayout(0);
   initPhysicsFromLayout(L);
   renderAll();
+}
+
+function renderGardenResult() {
+  const box = document.getElementById('gardenResult');
+  const result = simData?.metadata?.optimization;
+  if (simData?.metadata?.preset !== 'greenhouse' || !result) {
+    box.hidden = true;
+    box.textContent = '';
+    return;
+  }
+  box.hidden = false;
+  const plan = result.plans[0];
+  if (!plan) {
+    box.innerHTML = '<strong>No valid plan</strong><div class="garden-meta">Every combination exceeds the greenhouse space limit.</div>';
+    return;
+  }
+  const cropNames = plan.crops.length ? plan.crops.join(', ') : 'No crops';
+  const itemCombination = plan.itemIds.length ? plan.itemIds.map(index => `it${index}`).join(' + ') : 'empty set';
+  const ties = result.plans.length > 1 ? ` · ${result.plans.length} tied plans` : '';
+  box.innerHTML = `<strong>Best greenhouse plan</strong>
+    <div class="garden-crops"><b>${itemCombination}</b> — ${cropNames}</div>
+    <div>(total space = ${plan.space} m², total profit = €${plan.profit})</div>
+    <div>First harvest <b>${plan.harvestDays} days</b>${ties}</div>
+    <div class="garden-meta">Revenue €${plan.revenue} − costs €${plan.cost}</div>
+    <div class="garden-meta">${result.feasibleCount} space-valid combinations · profit first, harvest time as tie-break</div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -832,6 +1012,10 @@ function buildLogPanel() {
         el.className = 'log-ev diss';
         el.innerHTML = `💥 <b>CELL DESTROYED (δ)</b> [${ev.membrane_label}]
           <span class="sub">${ev.description || 'Dissolved and deleted from interface'}</span>`;
+      } else if (ev.event === 'optimization_result') {
+        el.className = 'log-ev rule';
+        el.innerHTML = `🏆 <b>OPTIMAL GREENHOUSE PLAN</b>
+          <span class="sub">${ev.description}</span>`;
       }
       body.appendChild(el);
     });
@@ -1210,7 +1394,7 @@ function drawMembrane(c, x, y, r, label, borderColor='#334155', fillColor='#0d11
     c.textBaseline = 'middle';
 
     const spans = dna.map(g => ({
-      text: (g.choice ? '✓' : '✗') + g.item,
+      text: (g.choice ? '✓' : '✗') + (g.name ? g.name.slice(0, 2) : g.item),
       color: g.choice ? '#22c55e' : '#ef4444'
     }));
 
@@ -1385,6 +1569,7 @@ function renderAll() {
     const isDiv   = divIds.has(node.id);
     const isRule  = ruleIds.has(node.id);
     const isSel   = node.id === selectedId;
+    const isBest  = node.id === simData.metadata?.optimization?.bestMembraneId;
     const isHov   = node.id === hoverMemId;
 
     let border='#21293a', fill='#0d1117', glow=null, glow_a=0.3, lw=1.5;
@@ -1397,6 +1582,7 @@ function renderAll() {
     else               { border='#1e3a5f'; fill='#080e18'; }
 
     if (isSel) { border='#f59e0b'; glow='#f59e0b'; glow_a=0.5; lw=2.5; }
+    else if (isBest) { border='#facc15'; glow='#facc15'; glow_a=0.55; lw=3; }
     else if (isHov) { glow=border; glow_a=0.2; }
 
     const dna = extractDna(node);
@@ -1860,7 +2046,7 @@ function drawDetailCanvas() {
     dctx.textBaseline = 'middle';
 
     const spans = dna.map(g => ({
-      text: (g.choice ? '✓' : '✗') + g.item,
+      text: (g.choice ? '✓' : '✗') + (g.name || g.item),
       color: g.choice ? '#22c55e' : '#ef4444'
     }));
 
