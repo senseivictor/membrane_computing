@@ -15,37 +15,41 @@ export default function JsonStepViewer() {
 
   return (
     <main className="json-page">
-      <div className="json-legend">
-        <span><b>C_</b> = celula</span>
-        <span><b>E_</b> = enzima</span>
-        <span><b>T_</b> = token</span>
-        <span><b>R_</b> = receptor</span>
-        <span><b>no_</b> = obiect omis din combinatie</span>
-      </div>
-      <div className="json-steps">
-        {simulation.steps.map(step => (
-          <section className="json-step-block" key={step.step}>
-            <h2 className="json-step-title">Pasul {step.step}: {step.title}</h2>
-            {step.events.filter(event => event.message).map((event, index) => (
-              <div className="json-step-label" key={index}>{event.message}</div>
-            ))}
-            <div className="json-cell-buttons">
-              {step.tree.children.map((cell, index) => (
-                <button
-                  className="json-cell-button"
-                  key={cell.id}
-                  onClick={() => setSelection({ cellId: cell.id, stepIndex: step.step, cellNumber: index + 1, directCell: true })}
-                >
-                  C_{index + 1}
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <section className="division-tree-section">
+        <h1 className="json-step-title">Divizarea</h1>
+        <DivisionTree onSelect={setSelection} />
+      </section>
       {selection && <CellModal selection={selection} onSelect={setSelection} onClose={() => setSelection(null)} />}
     </main>
   );
+}
+
+function DivisionTree({ onSelect }: { onSelect: (selection: any) => void }) {
+  const initialCell = simulation.steps[0]?.tree.children[0];
+  if (!initialCell) return null;
+  const divisions = new Map<string, any>();
+  simulation.steps.flatMap(step => step.events)
+    .filter((event: any) => event.event === 'membrane_divided')
+    .forEach((event: any) => divisions.set(event.parent_id, event));
+
+  const renderCell = (id: string): any => {
+    const division = divisions.get(id);
+    const children = division ? [division.object_cell_in, division.object_cell_out] : [];
+    const latest = simulation.steps.reduce((result, step, index) => {
+      const cellIndex = step.tree.children.findIndex((cell: any) => cell.id === id);
+      return cellIndex >= 0 ? { stepIndex: index, cellNumber: cellIndex + 1 } : result;
+    }, { stepIndex: 0, cellNumber: 1 });
+    return (
+      <li key={id}>
+        <button className="division-tree-cell" onClick={() => onSelect({
+          cellId: id, ...latest, directCell: true
+        })}>C_{latest.cellNumber}</button>
+        {children.length > 0 && <ul>{children.map(renderCell)}</ul>}
+      </li>
+    );
+  };
+
+  return <div className="division-tree"><ul>{renderCell(initialCell.id)}</ul></div>;
 }
 
 function CellModal({ selection, onSelect, onClose }: any) {
@@ -54,7 +58,6 @@ function CellModal({ selection, onSelect, onClose }: any) {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
-
   const modalState = getModalState(selection);
   const { cell, cellNumber, step, divisionEvent } = modalState;
   const isDivisionBindingStep = step.title.startsWith('Division Token Binding');
@@ -103,16 +106,6 @@ function CellModal({ selection, onSelect, onClose }: any) {
       </section>
     </div>
   );
-}
-
-function findCell(tree: any, id: string): any {
-  if (!tree) return null;
-  if (tree.id === id) return tree;
-  for (const child of tree.children || []) {
-    const match = findCell(child, id);
-    if (match) return match;
-  }
-  return null;
 }
 
 function getModalState(selection: any) {
@@ -173,6 +166,16 @@ function moveSelection(selection: any, direction: -1 | 1) {
 
   const cellNumber = targetStep.tree.children.findIndex((candidate: any) => candidate.id === cellId) + 1;
   return { cellId, stepIndex, cellNumber: cellNumber || selection.cellNumber, directCell };
+}
+
+function findCell(tree: any, id: string): any {
+  if (!tree) return null;
+  if (tree.id === id) return tree;
+  for (const child of tree.children || []) {
+    const match = findCell(child, id);
+    if (match) return match;
+  }
+  return null;
 }
 
 function CellDetails({ cell, cellNumber, isDivisionBindingStep }: any) {

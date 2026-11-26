@@ -2,6 +2,21 @@
 html, body, #root { min-height: 100%; margin: 0; background: #08090f; color: #e2e8f0; font-family: Segoe UI, Arial, sans-serif; }
 body { overflow-y: auto; }
 .json-page { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+.division-tree-section { display: grid; justify-items: center; gap: 24px; }
+.division-tree { width: 100%; overflow-x: auto; padding: 8px 0 24px; }
+.division-tree ul { position: relative; display: flex; justify-content: center; margin: 0; padding: 20px 0 0; list-style: none; }
+.division-tree > ul { padding-top: 0; }
+.division-tree li { position: relative; padding: 20px 10px 0; text-align: center; }
+.division-tree li::before, .division-tree li::after { position: absolute; top: 0; right: 50%; width: 50%; height: 20px; border-top: 1px solid #475569; content: ''; }
+.division-tree li::after { right: auto; left: 50%; border-left: 1px solid #475569; }
+.division-tree li:only-child::before, .division-tree li:only-child::after { display: none; }
+.division-tree li:first-child::before, .division-tree li:last-child::after { border: 0; }
+.division-tree li:last-child::before { border-right: 1px solid #475569; }
+.division-tree li:first-child::after { border-radius: 5px 0 0; }
+.division-tree li:last-child::before { border-radius: 0 5px 0 0; }
+.division-tree li > ul::before { position: absolute; top: 0; left: 50%; height: 20px; border-left: 1px solid #475569; content: ''; }
+.division-tree-cell { display: inline-block; min-width: 56px; padding: 6px 12px; border: 1px solid #334155; border-radius: 5px; background: transparent; color: #cbd5e1; cursor: pointer; font: 15px/1.4 Consolas, monospace; }
+.division-tree-cell:hover { border-color: #60a5fa; color: #bfdbfe; }
 .json-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 22px; color: #94a3b8; font: 13px/1.4 Consolas, monospace; }
 .json-legend b { color: #60a5fa; }
 .json-steps { display: grid; gap: 22px; }

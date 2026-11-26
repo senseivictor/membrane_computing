@@ -79,7 +79,6 @@ export function runDivisionPhase({ skin, nextId, random = Math.random }: any) {
           .map(cell => ({ event: 'T_eval', message: `T_eval a fost emis in ${cell.id}` })),
         tree: snapshotTree(skin)
       });
-      break;
     }
 
     // Separate the enzyme's count back into free tokens while cloning it empty.
@@ -116,6 +115,7 @@ export function runDivisionPhase({ skin, nextId, random = Math.random }: any) {
     });
     step++;
     history.push({ step, title: `Division Round ${round}`, events: divisions, tree: snapshotTree(skin) });
+    if (evaluationReady) break;
   }
   return history;
 }
