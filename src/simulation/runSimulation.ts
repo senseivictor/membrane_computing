@@ -13,7 +13,7 @@ export function runSimulationFromConfig(items, itemNames = [], random = Math.ran
   const skin = new Membrane(nextId('skin'), 'skin');
   const firstCell = new Membrane(nextId('gen'), 'gen', skin, {
     T_div_start: 1,
-    E_div_count: { receptors: objects.length, bounds: 0 },
+    E_div_count: { receptors: objects.length + 1, bounds: 0 },
     T_div_count: 0,
     ...(objects.length === 0 ? { T_eval: 1 } : {})
   });

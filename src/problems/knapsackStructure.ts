@@ -12,7 +12,7 @@ export function createKnapsackExample() {
   const initialMembrane = skin.addChild(
     new Membrane("gen#2", "gen", skin, {
       T_div_start: 1,
-      E_div_count: { receptors: items.length, bounds: 0 },
+      E_div_count: { receptors: items.length + 1, bounds: 0 },
       T_div_count: 0,
     }),
   );

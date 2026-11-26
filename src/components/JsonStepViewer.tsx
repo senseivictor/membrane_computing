@@ -53,59 +53,137 @@ function DivisionTree({ onSelect }: { onSelect: (selection: any) => void }) {
 }
 
 function CellModal({ selection, onSelect, onClose }: any) {
+  const [cellStep, setCellStep] = useState(0);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
-  const modalState = getModalState(selection);
-  const { cell, cellNumber, step, divisionEvent } = modalState;
-  const isDivisionBindingStep = step.title.startsWith('Division Token Binding');
-  const counterUpdate = step.events.find((event: any) => event.membrane_id === selection.cellId && event.T_div_count_created === 1);
-  const needsDaughterChoice = Boolean(divisionEvent && !selection.directCell);
+  useEffect(() => setCellStep(0), [selection.cellId]);
+
+  const phases = getCellPhases(selection.cellId);
+  const phase = phases[cellStep];
 
   return (
     <div className="cell-modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
       <section className="cell-modal" role="dialog" aria-modal="true" aria-labelledby="cellModalTitle">
         <header className="cell-modal-header">
           <div>
-            <h2 id="cellModalTitle">C_{cellNumber}</h2>
-            <span>Pasul {step.step}</span>
+            <h2 id="cellModalTitle">C_{selection.cellNumber}</h2>
+            <span>Pasul {cellStep} din 5</span>
           </div>
           <button className="cell-modal-close" onClick={onClose} aria-label="Inchide">x</button>
         </header>
-        <div className={`cell-modal-content${divisionEvent ? ' modal-division-only' : ''}`}>
-          {divisionEvent && (
+        <div className="cell-modal-content">
+          <div className="modal-cell-step-text">
+            {phase.lines.map((line: string, index: number) => <div key={`${index}-${line}`}>{line}</div>)}
+          </div>
+          {phase.cell && <CellContents cell={phase.cell} className="modal-root-content"
+            isDivisionBindingStep={cellStep === 1} counterUpdate={phase.counterUpdate} />}
+          {phase.daughters.length > 0 && (
             <div className="modal-division-links">
-              <span>Divizare </span>
+              <span>Divizare</span>
               <div className="modal-division-options">
-                {[divisionEvent.object_cell_in, divisionEvent.object_cell_out].map(id => {
-                  const daughter = findCell(step.tree, id);
-                  const number = step.tree.children.findIndex((candidate: any) => candidate.id === id) + 1;
-                  if (!daughter) return null;
-                  return (
-                    <button className="modal-division-link" key={id}
-                      onClick={() => onSelect({ cellId: id, stepIndex: step.step, cellNumber: number, directCell: true })}>
-                      C_{number}
-                    </button>
-                  );
-                })}
+                {phase.daughters.map((daughter: any) => (
+                  <button className="modal-division-link" key={daughter.id}
+                    onClick={() => onSelect(daughter.selection)}>
+                    C_{daughter.selection.cellNumber}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-          {!divisionEvent && cell && (
-            <CellContents cell={cell} className="modal-root-content" isDivisionBindingStep={isDivisionBindingStep} counterUpdate={counterUpdate} />
-          )}
         </div>
         <footer className="cell-modal-navigation">
-          <button onClick={() => onSelect(moveSelection(selection, -1))} disabled={step.step === 0} aria-label="Pasul anterior">&larr;</button>
-          <button onClick={() => onSelect(moveSelection(selection, 1))}
-            disabled={step.step >= simulation.steps.length - 1 || needsDaughterChoice}
-            aria-label="Pasul urmator">&rarr;</button>
+          <button onClick={() => setCellStep(value => Math.max(0, value - 1))} disabled={cellStep === 0} aria-label="Pasul anterior">&larr;</button>
+          <button onClick={() => setCellStep(value => Math.min(5, value + 1))} disabled={cellStep === 5} aria-label="Pasul urmator">&rarr;</button>
         </footer>
       </section>
     </div>
   );
+}
+
+function getCellPhases(cellId: string) {
+  const steps = simulation.steps;
+  const appearances = steps.map(step => findCell(step.tree, cellId));
+  const firstAppearance = appearances.findIndex(Boolean);
+  const initial = firstAppearance >= 0 ? appearances[firstAppearance] : null;
+  const bindingIndex = steps.findIndex(step => step.title.startsWith('Division Token Binding') &&
+    step.events.some((event: any) => event.membrane_id === cellId));
+  const counterIndex = steps.findIndex(step => step.title.startsWith('Counter Enzyme Binding') &&
+    step.events.some((event: any) => event.membrane_id === cellId));
+  const divisionIndex = steps.findIndex(step => step.title.startsWith('Division Round') &&
+    step.events.some((event: any) => event.parent_id === cellId));
+  const bindingEvent = bindingIndex >= 0
+    ? steps[bindingIndex].events.find((event: any) => event.membrane_id === cellId) : null;
+  const divisionEvent = divisionIndex >= 0
+    ? steps[divisionIndex].events.find((event: any) => event.parent_id === cellId) : null;
+  const evaluationEvent = steps.flatMap(step => step.events).find((event: any) =>
+    event.event === 'T_eval' && event.message?.includes(cellId));
+  const evaluationIndex = evaluationEvent
+    ? steps.findIndex(step => step.events.includes(evaluationEvent)) : -1;
+  const lastAppearance = appearances.reduce((latest, cell, index) => cell ? index : latest, firstAppearance);
+  const outcomeIndex = evaluationIndex >= 0
+    ? evaluationIndex
+    : divisionIndex >= 0 ? Math.max(0, divisionIndex - 1) : lastAppearance;
+  const stateAt = (index: number) => index >= 0 ? appearances[index] : initial;
+  const bindingState = stateAt(bindingIndex);
+  const cloneState = (cell: any): any => cell && ({
+    ...cell,
+    objects: Object.fromEntries(Object.entries(cell.objects).map(([name, value]: [string, any]) => [
+      name, value && typeof value === 'object' ? { ...value } : value
+    ])),
+    children: (cell.children || []).map(cloneState)
+  });
+  const bindingPresentation = (hideReceptors: boolean, showCount: boolean) => {
+    const cell = cloneState(bindingState);
+    if (!cell) return cell;
+    if (!showCount) delete cell.objects.T_div_count;
+    (cell.children || []).forEach((objectCell: any) => {
+      if (objectCell.objects.T_div_start && objectCell.objects.R_div_start) {
+        objectCell.objects.R_div_start = { ...objectCell.objects.R_div_start, hidden: hideReceptors };
+      }
+    });
+    return cell;
+  };
+  const daughters = divisionEvent
+    ? [divisionEvent.object_cell_in, divisionEvent.object_cell_out].map(id => {
+      const location = steps.reduce((result, step, index) => {
+        const cellIndex = step.tree.children.findIndex((cell: any) => cell.id === id);
+        return cellIndex >= 0 ? { stepIndex: index, cellNumber: cellIndex + 1 } : result;
+      }, { stepIndex: 0, cellNumber: 1 });
+      return { id, selection: { cellId: id, ...location, directCell: true } };
+    })
+    : [];
+
+  return [
+    { lines: ['0. Starea initiala'], cell: initial, counterUpdate: null, daughters: [] },
+    {
+      lines: ['1 Tokenul div start se ataseaza de receptorul unui obiect'],
+      cell: bindingPresentation(false, false), counterUpdate: null, daughters: []
+    },
+    {
+      lines: ['2 Obiectul respectiv isi ascunde receptorii ca sa nu mai poata fi ales'],
+      cell: bindingPresentation(true, false), counterUpdate: null, daughters: []
+    },
+    {
+      lines: ['3 Se creeaza un token nou div count'],
+      cell: bindingPresentation(true, true), counterUpdate: bindingEvent, daughters: []
+    },
+    {
+      lines: ['4. Tokenii div count se ataseaza de receptorii enzimei'],
+      cell: stateAt(counterIndex), counterUpdate: null, daughters: []
+    },
+    {
+      lines: [
+        '5.1 Daca enzima e plina, se creeaza tokenul Eval',
+        '5.2 Daca enzima nu e plina, se divide celula'
+      ],
+      cell: stateAt(outcomeIndex),
+      counterUpdate: null,
+      daughters
+    }
+  ];
 }
 
 function getModalState(selection: any) {
