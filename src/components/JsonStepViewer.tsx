@@ -7,7 +7,7 @@ const simulation = runSimulationFromConfig(
   example.items.map(item => item.tokens),
   example.items.map(item => item.name)
 );
-const DEFAULT_VISIBLE_CELL_PROPERTIES = ['R_div_token'];
+const DEFAULT_VISIBLE_CELL_PROPERTIES = ['R_div_start'];
 const DEFAULT_VISIBLE_ENZYME_PROPERTIES: string[] | 'all' = 'all';
 
 export default function JsonStepViewer() {
@@ -58,6 +58,7 @@ function CellModal({ selection, onSelect, onClose }: any) {
   const modalState = getModalState(selection);
   const { cell, cellNumber, step, divisionEvent } = modalState;
   const isDivisionBindingStep = step.title.startsWith('Division Token Binding');
+  const counterUpdate = step.events.find((event: any) => event.membrane_id === selection.cellId && event.T_div_count_created === 1);
   const needsDaughterChoice = Boolean(divisionEvent && !selection.directCell);
 
   return (
@@ -90,7 +91,7 @@ function CellModal({ selection, onSelect, onClose }: any) {
             </div>
           )}
           {!divisionEvent && cell && (
-            <CellContents cell={cell} className="modal-root-content" isDivisionBindingStep={isDivisionBindingStep} />
+            <CellContents cell={cell} className="modal-root-content" isDivisionBindingStep={isDivisionBindingStep} counterUpdate={counterUpdate} />
           )}
         </div>
         <footer className="cell-modal-navigation">
@@ -196,7 +197,7 @@ function CellDetails({ cell, cellNumber, isDivisionBindingStep }: any) {
   );
 }
 
-function CellContents({ cell, className = '', objectCell = false, showAllProperties = false, isDivisionBindingStep = false }: any) {
+function CellContents({ cell, className = '', objectCell = false, showAllProperties = false, isDivisionBindingStep = false, counterUpdate = null }: any) {
   const useColumns = className.includes('modal-root-content');
   return (
     <div className={`modal-cell-content ${className}${useColumns ? ' modal-cell-columns' : ''}`}>
@@ -214,24 +215,25 @@ function CellContents({ cell, className = '', objectCell = false, showAllPropert
         ))}
       </div>
       <div className="modal-token-column">
-        <TokenList objects={cell.objects} objectCell={objectCell} showAllProperties={showAllProperties} isDivisionBindingStep={isDivisionBindingStep} />
+        <TokenList objects={cell.objects} objectCell={objectCell} showAllProperties={showAllProperties} isDivisionBindingStep={isDivisionBindingStep} counterUpdate={counterUpdate} />
       </div>
     </div>
   );
 }
 
-function TokenList({ objects, objectCell = false, showAllProperties = false, isDivisionBindingStep = false }: {
+function TokenList({ objects, objectCell = false, showAllProperties = false, isDivisionBindingStep = false, counterUpdate = null }: {
   objects: Record<string, any>;
   objectCell?: boolean;
   showAllProperties?: boolean;
   isDivisionBindingStep?: boolean;
+  counterUpdate?: any;
 }) {
   if (objectCell) return <ObjectProperties objects={objects} showAllProperties={showAllProperties} isDivisionBindingStep={isDivisionBindingStep} />;
 
   return (
     <div className="modal-token-list">
       {Object.entries(objects).map(([name, value]) => (
-        <TokenEntry name={name} value={value} key={name} />
+        <TokenEntry name={name} value={value} counterUpdate={counterUpdate} key={name} />
       ))}
     </div>
   );
@@ -246,7 +248,7 @@ function ObjectProperties({ objects, showAllProperties, isDivisionBindingStep }:
   const defaultEntries = entries.filter(([name]) => DEFAULT_VISIBLE_CELL_PROPERTIES.includes(name));
   const remainingEntries = entries.filter(([name]) => !DEFAULT_VISIBLE_CELL_PROPERTIES.includes(name));
   const visibleRows: Array<{ key: string; label: string; isToken?: boolean; nested?: boolean; binding?: boolean }> = defaultEntries.flatMap(([name, value]) => {
-    if (name === 'R_div_token') {
+    if (name === 'R_div_start') {
       const receptorProperties = value.hidden && !value.bound
         ? [['hidden', value.hidden]]
         : [['bound', value.bound], ['hidden', value.hidden]];
@@ -267,7 +269,7 @@ function ObjectProperties({ objects, showAllProperties, isDivisionBindingStep }:
       {visibleRows.map(row => {
         const rowClass = `modal-property${row.nested ? ' modal-property-nested' : ''}`;
         const content = row.isToken ? <strong>{row.label}</strong>
-          : row.binding ? <><span>{row.label}</span><span className="modal-binding-note">&lt;-- T_div_token</span></>
+          : row.binding ? <><span>{row.label}</span><span className="modal-binding-note">&lt;-- T_div_start</span></>
           : row.label;
         return <div className={rowClass} key={row.key}>{content}</div>;
       })}
@@ -281,7 +283,23 @@ function ObjectProperties({ objects, showAllProperties, isDivisionBindingStep }:
     </div>
   );
 }
-function TokenEntry({ name, value }: { name: string; value: any }) {
+function TokenEntry({ name, value, counterUpdate = null }: { name: string; value: any; counterUpdate?: any }) {
+  if (name === 'T_div_count') {
+    if (Number(value) === 0) return null;
+    const previous = counterUpdate?.counter_previous_bounds || 0;
+    return (
+      <div className="modal-token-box modal-counter-token">
+        {previous > 0 ? (
+          <><span>{previous} x T_div_count</span><span className="modal-new-counter">+ T_div_count</span></>
+        ) : (
+          counterUpdate
+            ? <span className="modal-new-counter">+ T_div_count</span>
+            : <span>{value} x T_div_count</span>
+        )}
+      </div>
+    );
+  }
+
   if (name === 'E_div_count') {
     const enzymeProperties = Object.entries(value);
     const visibleProperties = DEFAULT_VISIBLE_ENZYME_PROPERTIES === 'all'
@@ -293,9 +311,10 @@ function TokenEntry({ name, value }: { name: string; value: any }) {
         <div className="modal-extra-properties modal-indented-properties">
           {visibleProperties.map(([property, propertyValue]) => (
             <div className="modal-property" key={property}>
-              {property}: {JSON.stringify(propertyValue)}
-              {property === 'bounds' && propertyValue > 0 && (
-                <span className="modal-binding-note">&lt;-- {propertyValue} x T_div_count</span>
+              {property === 'bounds' ? (
+                <>bounds: {propertyValue}</>
+              ) : (
+                <>{property}: {JSON.stringify(propertyValue)}</>
               )}
             </div>
           ))}
@@ -303,7 +322,7 @@ function TokenEntry({ name, value }: { name: string; value: any }) {
       </div>
     );
   }
-  const tokenName = (name.startsWith('E_') || (name.startsWith('T_') && name !== 'T_receptor'))
+  const tokenName = name.startsWith('E_') || name.startsWith('T_')
     ? <strong>{name}</strong>
     : name;
   if (value === 1 || value === true) return <div className="modal-token-box">{tokenName}</div>;

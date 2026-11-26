@@ -11,8 +11,9 @@ export function createKnapsackExample() {
   const skin = new Membrane("skin#1", "skin");
   const initialMembrane = skin.addChild(
     new Membrane("gen#2", "gen", skin, {
-      T_div_select: 1,
+      T_div_start: 1,
       E_div_count: { receptors: items.length, bounds: 0 },
+      T_div_count: 0,
     }),
   );
   items.forEach((item, index) => {
@@ -20,15 +21,14 @@ export function createKnapsackExample() {
       `object#${index + 1}`,
       `object:${index + 1}:${item.name}`,
       initialMembrane,
-      { ...item.tokens, R_div_token: { bound: false, hidden: false } },
+      { ...item.tokens, R_div_start: { bound: false, hidden: false } },
     ));
   });
   const divisionRules = [
-    { name: "Bind_T_div_select_To_Random_Receptor", type: "binding" },
-    { name: "Divide_Object_In_Or_Out", type: "division" },
-    { name: "Recreate_T_div_select_And_E_div_count", type: "cell_creation" },
-    { name: "Bind_T_div_count_To_E_div_count_Receptor", type: "binding" },
+    { name: "Bind_T_div_start_To_R_div_start_And_Increment_External_T_div_count", type: "binding" },
+    { name: "Bind_All_T_div_count_To_E_div_count", type: "binding" },
     { name: "Signal_Evaluation_When_E_div_count_Is_Full", type: "signal" },
+    { name: "Divide_Object_If_E_div_count_Is_Not_Full", type: "division" },
   ];
   return {
     problem: "knapsack" as const,

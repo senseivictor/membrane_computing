@@ -39,9 +39,11 @@ body { overflow-y: auto; }
 .modal-object-column > .modal-object-cell:first-child { margin-top: 0; }
 .modal-token-list { display: grid; gap: 18px; }
 .modal-token-box { padding: 0; border: 0; background: transparent; color: #cbd5e1; font: 400 16px/1.5 Consolas, monospace; }
+.modal-counter-token { display: flex; gap: 10px; }
 .modal-object-properties, .modal-extra-properties { display: grid; gap: 2px; }
 .modal-indented-properties { margin-left: 18px; }
 .modal-property { color: #cbd5e1; font: 400 16px/1.45 Consolas, monospace; }
+.modal-new-counter { margin-left: 10px; color: #4ade80; }
 .modal-property-nested { margin-left: 18px; }
 .modal-binding-note { margin-left: 18px; color: #93c5fd; white-space: nowrap; }
 .modal-cell-title-button { display: flex; align-items: center; width: fit-content; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }

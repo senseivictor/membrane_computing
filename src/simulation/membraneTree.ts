@@ -22,6 +22,15 @@ export function getLivingMembranes(membrane: any): any[] {
   if (!membrane.alive) return [];
   return [membrane, ...(membrane.children || []).flatMap(getLivingMembranes)];
 }
+
+/** Copies every token and clones nested token properties for an independent membrane. */
+export function cloneTokens(tokens: Record<string, any>) {
+  return Object.fromEntries(Object.entries(tokens).map(([name, value]) => [
+    name,
+    value && typeof value === 'object' ? { ...value } : value
+  ]));
+}
+
 /** Copies object cells, hiding the chosen receptor or omitting that object from one branch. */
 export function cloneChildMembranes(
   source: any,
@@ -31,13 +40,9 @@ export function cloneChildMembranes(
 ) {
   (source.children || []).forEach(child => {
     if (child.label === decision.objectLabel && !decision.selected) return;
-    const tokens: Record<string, any> = Object.fromEntries(Object.entries(child.objects).map(([name, value]) => [
-      name,
-      value && typeof value === 'object' ? { ...value } : value
-    ]));
+    const tokens = cloneTokens(child.objects);
     if (child.label === decision.objectLabel) {
-      delete tokens.T_div_select;
-      if (tokens.R_div_token) tokens.R_div_token = { bound: false, hidden: true };
+      if (tokens.R_div_start) tokens.R_div_start = { bound: false, hidden: true };
     }
     const copy = new Membrane(nextId('object'), child.label, destination, tokens, {
       dna: [...(child.dna || [])], slotIdx: child.slotIdx, slotCount: child.slotCount

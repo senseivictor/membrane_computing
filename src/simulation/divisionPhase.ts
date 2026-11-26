@@ -1,8 +1,8 @@
 import { Membrane } from '../model/Membrane';
-import { bindCounterToken, createDaughterTokens } from './counterEnzyme';
-import { cloneChildMembranes, getLivingMembranes, snapshotTree } from './membraneTree';
+import { bindCounterToken } from './counterEnzyme';
+import { cloneChildMembranes, cloneTokens, getLivingMembranes, snapshotTree } from './membraneTree';
 
-/** Randomly binds a division token, divides each active cell, then updates its counter enzyme. */
+/** Binds the start signal, transfers count tokens into the enzyme, then evaluates or divides. */
 export function runDivisionPhase({ skin, nextId, random = Math.random }: any) {
   const history = [{ step: 0, title: 'Initial State', events: [], tree: snapshotTree(skin) }];
   let step = 0;
@@ -10,49 +10,94 @@ export function runDivisionPhase({ skin, nextId, random = Math.random }: any) {
 
   while (true) {
     const activeCells = getLivingMembranes(skin).filter(cell =>
-      cell.label === 'gen' && cell.objects.T_div_select &&
-      cell.children.some(child => child.label.startsWith('object:') && child.objects.R_div_token && !child.objects.R_div_token.hidden)
+      cell.label === 'gen' && cell.objects.T_div_start &&
+      cell.children.some(child => child.label.startsWith('object:') && child.objects.R_div_start && !child.objects.R_div_start.hidden)
     );
     if (!activeCells.length) break;
     round++;
 
-    // Binding is a separate step: each division token chooses one available object receptor.
+    // Bind the division-start token and add one more count to the external token group.
     const bindings = activeCells.map(cell => {
       const available = cell.children.filter(child =>
-        child.label.startsWith('object:') && child.objects.R_div_token && !child.objects.R_div_token.hidden
+        child.label.startsWith('object:') && child.objects.R_div_start && !child.objects.R_div_start.hidden
       );
       const objectCell = available[Math.floor(random() * available.length)];
-      delete cell.objects.T_div_select;
-      objectCell.objects.R_div_token = { bound: true, hidden: true };
-      objectCell.objects.T_div_select = 1;
+      delete cell.objects.T_div_start;
+      const previousCount = Number(cell.objects.T_div_count) || 0;
+      cell.objects.T_div_count = previousCount + 1;
+      objectCell.objects.R_div_start = { bound: true, hidden: true };
+      objectCell.objects.T_div_start = 1;
       const [, number, ...nameParts] = objectCell.label.split(':');
       const name = nameParts.join(':');
-      return { cell, objectCell, number: Number(number), name };
+      return { cell, objectCell, number: Number(number), name, previousCount };
     });
     step++;
     history.push({
       step,
       title: `Division Token Binding - Round ${round}`,
       events: bindings.map(binding => ({
-        event: 'T_div_select_bound',
-        message: `T_div_select s-a lipit de C_${binding.number}`,
-        object: binding.name
+        event: 'T_div_start_bound',
+        message: `T_div_start s-a lipit de C_${binding.number}`,
+        object: binding.name,
+        membrane_id: binding.cell.id,
+        counter_previous_bounds: binding.previousCount,
+        T_div_count_created: 1
       })),
       tree: snapshotTree(skin)
     });
 
-    // The chosen object is copied into the included daughter and omitted from the skipped daughter.
+    // Move each complete external counter group into its enzyme before deciding whether to divide.
+    const counterEvents = bindings.flatMap(({ cell }) => {
+      const result = bindCounterToken(cell);
+      return result ? [{
+        event: result.full ? 'E_div_count_full' : 'T_div_count_bound',
+        message: `T_div_count s-a unit cu E_div_count in ${cell.id}`,
+        membrane_id: cell.id,
+        T_div_count_bounds: result.total,
+        T_div_count_capacity: result.capacity,
+        T_eval: result.full
+      }] : [];
+    });
+    step++;
+    history.push({
+      step,
+      title: `Counter Enzyme Binding - Round ${round}`,
+      events: counterEvents,
+      tree: snapshotTree(skin)
+    });
+
+    const evaluationReady = getLivingMembranes(skin)
+      .filter(cell => cell.label === 'gen')
+      .every(cell => cell.objects.T_eval === 1);
+    if (evaluationReady) {
+      step++;
+      history.push({
+        step,
+        title: 'Evaluation Signal',
+        events: getLivingMembranes(skin)
+          .filter(cell => cell.label === 'gen' && cell.objects.T_eval === 1)
+          .map(cell => ({ event: 'T_eval', message: `T_eval a fost emis in ${cell.id}` })),
+        tree: snapshotTree(skin)
+      });
+      break;
+    }
+
+    // Separate the enzyme's count back into free tokens while cloning it empty.
     const divisions = [];
     bindings.forEach(({ cell: parent, objectCell, number, name }) => {
-      const baseTokens = { ...parent.objects };
-      delete baseTokens.T_div_select;
-      delete baseTokens.T_div_count;
+      const daughterTokens = () => {
+        const tokens = cloneTokens(parent.objects);
+        tokens.T_div_start = 1;
+        tokens.T_div_count = parent.objects.E_div_count.bounds;
+        tokens.E_div_count.bounds = 0;
+        return tokens;
+      };
       const selectedDaughter = new Membrane(
-        nextId('gen'), 'gen', parent.parent, createDaughterTokens(baseTokens),
+        nextId('gen'), 'gen', parent.parent, daughterTokens(),
         { dna: [...(parent.dna || []), { item: number, name, choice: true, label: `IN ${name}` }] }
       );
       const skippedDaughter = new Membrane(
-        nextId('gen'), 'gen', parent.parent, createDaughterTokens(baseTokens),
+        nextId('gen'), 'gen', parent.parent, daughterTokens(),
         { dna: [...(parent.dna || []), { item: number, name, choice: false, label: `OUT ${name}` }] }
       );
       cloneChildMembranes(parent, selectedDaughter, nextId, { objectLabel: objectCell.label, selected: true });
@@ -67,35 +112,10 @@ export function runDivisionPhase({ skin, nextId, random = Math.random }: any) {
         object: name,
         object_cell_in: selectedDaughter.id,
         object_cell_out: skippedDaughter.id,
-        counter_tokens_created: [selectedDaughter.id, skippedDaughter.id]
       });
     });
     step++;
     history.push({ step, title: `Division Round ${round}`, events: divisions, tree: snapshotTree(skin) });
-
-    // Each daughter binds its newly created counter token to the enzyme.
-    const counterEvents = [];
-    getLivingMembranes(skin).filter(cell => cell.label === 'gen').forEach(cell => {
-      const result = bindCounterToken(cell);
-      if (result) counterEvents.push({
-        event: result.full ? 'E_div_count_full' : 'T_div_count_bound',
-        membrane_id: cell.id,
-        T_div_count_bounds: result.total,
-        T_div_count_capacity: result.capacity,
-        T_eval: result.full
-      });
-    });
-    step++;
-    const evaluationReady = getLivingMembranes(skin)
-      .filter(cell => cell.label === 'gen')
-      .every(cell => cell.objects.T_eval === 1);
-    history.push({
-      step,
-      title: evaluationReady ? 'Evaluation Signal' : `Counter Enzyme Round ${round}`,
-      events: counterEvents,
-      tree: snapshotTree(skin)
-    });
-    if (evaluationReady) break;
   }
   return history;
 }
