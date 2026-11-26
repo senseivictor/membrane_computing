@@ -10,41 +10,29 @@ export function createKnapsackExample() {
   ];
   const skin = new Membrane("skin#1", "skin");
   const initialMembrane = skin.addChild(
-    new Membrane("gen#2", "gen", skin, { d_1: 1 }),
+    new Membrane("gen#2", "gen", skin, {
+      T_div_select: 1,
+      E_div_count: { receptors: items.length, bounds: 0 },
+    }),
   );
+  items.forEach((item, index) => {
+    initialMembrane.addChild(new Membrane(
+      `object#${index + 1}`,
+      `object:${index + 1}:${item.name}`,
+      initialMembrane,
+      { ...item.tokens, R_div_token: { bound: false, hidden: false } },
+    ));
+  });
   const divisionRules = [
-    {
-      name: "Divide_Tent",
-      type: "division",
-      trigger: "d_1",
-      daughter_a: { d_2: 1 },
-      daughter_b: { d_2: 1 },
-      object_cell_in: { name: "Tent", tokens: { weight: 2, value: 3, in_combination: 1 } },
-      object_cell_out: { name: "Tent", tokens: { weight: 2, value: 3, not_in_combination: 1 } },
-    },
-    {
-      name: "Divide_Stove",
-      type: "division",
-      trigger: "d_2",
-      daughter_a: { d_3: 1 },
-      daughter_b: { d_3: 1 },
-      object_cell_in: { name: "Stove", tokens: { weight: 3, value: 4, in_combination: 1 } },
-      object_cell_out: { name: "Stove", tokens: { weight: 3, value: 4, not_in_combination: 1 } },
-    },
-    {
-      name: "Divide_Rope",
-      type: "division",
-      trigger: "d_3",
-      daughter_a: { eval: 1 },
-      daughter_b: { eval: 1 },
-      object_cell_in: { name: "Rope", tokens: { weight: 1, value: 2, in_combination: 1 } },
-      object_cell_out: { name: "Rope", tokens: { weight: 1, value: 2, not_in_combination: 1 } },
-    },
+    { name: "Bind_T_div_select_To_Random_Receptor", type: "binding" },
+    { name: "Divide_Object_In_Or_Out", type: "division" },
+    { name: "Recreate_T_div_select_And_E_div_count", type: "cell_creation" },
+    { name: "Bind_T_div_count_To_E_div_count_Receptor", type: "binding" },
+    { name: "Signal_Evaluation_When_E_div_count_Is_Full", type: "signal" },
   ];
   return {
     problem: "knapsack" as const,
     items,
-    constraints: { weight: { max: 5 } },
     skin,
     initialMembrane,
     divisionRules,

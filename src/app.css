@@ -2,5 +2,50 @@
 html, body, #root { min-height: 100%; margin: 0; background: #08090f; color: #e2e8f0; font-family: Segoe UI, Arial, sans-serif; }
 body { overflow-y: auto; }
 .json-page { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
-.json-steps { display: grid; gap: 20px; }
-.json-step { overflow-x: auto; margin: 0; padding: 16px; border: 1px solid #21293a; border-radius: 10px; background: #0d1117; color: #cbd5e1; font: 13px/1.55 Consolas, monospace; white-space: pre; }
+.json-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 22px; color: #94a3b8; font: 13px/1.4 Consolas, monospace; }
+.json-legend b { color: #60a5fa; }
+.json-steps { display: grid; gap: 22px; }
+.json-step-block { display: grid; gap: 8px; }
+.json-step-title { margin: 0; color: #94a3b8; font-size: 14px; font-weight: 500; }
+.json-step-label { color: #f59e0b; font: 13px/1.4 Consolas, monospace; }
+.json-cell-buttons { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.json-cell-button { padding: 0; border: 0; background: transparent; color: #93c5fd; cursor: pointer; font: 14px/1.5 Consolas, monospace; }
+.json-cell-button:hover { color: #bfdbfe; text-decoration: underline; }
+.cell-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: #000b; }
+.cell-modal { width: min(760px, 100%); max-height: min(85vh, 900px); display: flex; flex-direction: column; overflow: hidden; border-radius: 8px; background: #0d1117; box-shadow: 0 20px 70px #0009; }
+.cell-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; }
+.cell-modal-header h2 { margin: 0; color: #93c5fd; font: 600 16px/1.4 Consolas, monospace; }
+.cell-modal-header span { color: #64748b; font-size: 12px; }
+.cell-modal-close { border: 0; background: transparent; color: #94a3b8; cursor: pointer; font-size: 24px; }
+.cell-modal-content { flex: 1; overflow-y: auto; padding: 0 20px 20px; }
+.cell-modal-content.modal-division-only { display: flex; align-items: center; justify-content: center; }
+.cell-modal-navigation { display: flex; justify-content: space-between; padding: 10px 20px 16px; }
+.cell-modal-navigation button { border: 0; background: transparent; color: #93c5fd; cursor: pointer; font: 24px/1 Segoe UI, Arial, sans-serif; }
+.cell-modal-navigation button:disabled { color: #475569; cursor: default; }
+.modal-division-links { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: 0; color: #cbd5e1; font: 22px/1.5 Consolas, monospace; }
+.modal-division-options { display: flex; align-items: center; justify-content: center; gap: 28px; }
+.modal-division-link { padding: 0; border: 0; background: transparent; color: #93c5fd; cursor: pointer; font: 26px/1.5 Consolas, monospace; text-decoration: underline; text-underline-offset: 4px; }
+.modal-division-link:hover { color: #bfdbfe; }
+.modal-cell { margin-top: 8px; }
+.modal-object-cell { margin-top: 22px; }
+.modal-cell-title { color: #cbd5e1; font: 700 17px/1.5 Consolas, monospace; }
+.modal-token-box strong { font-weight: 700; }
+.modal-cell-content { margin: 3px 0 0 20px; color: #cbd5e1; font: 15px/1.5 Consolas, monospace; }
+.modal-root-content { margin-left: 0; }
+.modal-cell-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; align-items: start; }
+.modal-object-column, .modal-token-column { min-width: 0; }
+.modal-token-column { order: 1; }
+.modal-object-column { order: 2; }
+.modal-object-column > .modal-object-cell:first-child { margin-top: 0; }
+.modal-token-list { display: grid; gap: 18px; }
+.modal-token-box { padding: 0; border: 0; background: transparent; color: #cbd5e1; font: 400 16px/1.5 Consolas, monospace; }
+.modal-object-properties, .modal-extra-properties { display: grid; gap: 2px; }
+.modal-indented-properties { margin-left: 18px; }
+.modal-property { color: #cbd5e1; font: 400 16px/1.45 Consolas, monospace; }
+.modal-property-nested { margin-left: 18px; }
+.modal-binding-note { margin-left: 18px; color: #93c5fd; white-space: nowrap; }
+.modal-cell-title-button { display: flex; align-items: center; width: fit-content; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.modal-cell-title-button strong { font: inherit; }
+.modal-cell-title-button:hover { color: #bfdbfe; text-decoration: underline; }
+.modal-absent-object { margin-top: 12px; color: #cbd5e1; font: 15px/1.6 Consolas, monospace; }
+@media (max-width: 600px) { .modal-cell-columns { grid-template-columns: 1fr; gap: 28px; } }

@@ -1,93 +1,45 @@
-﻿import { Membrane } from '../model/Membrane';
-import { Object as CandidateObject } from '../model/Object';
+import { Membrane } from '../model/Membrane';
+import { Object as KnapsackObject } from '../model/Object';
 import { runDivisionPhase } from './divisionPhase';
-import { runConstraintPhase } from './constraintPhase';
-import { createConstraintRules } from './rules';
+import { snapshotTree } from './membraneTree';
 
-/** Runs the simulation and returns each membrane-tree snapshot for display. */
-export function runSimulationFromConfig(items, constraints, itemNames = [], modelProperties = null) {
+/** Builds the initial cell, puts every item cell inside it, and runs division to evaluation. */
+export function runSimulationFromConfig(items, itemNames = [], random = Math.random) {
   const objects = items.map((tokens, index) =>
-    new CandidateObject(itemNames[index] || `Item ${index + 1}`, tokens)
+    new KnapsackObject(itemNames[index] || `Item ${index + 1}`, tokens)
   );
   let idCounter = 0;
   const nextId = (label: string) => `${label}#${++idCounter}`;
-  const rules = createConstraintRules(constraints);
-
   const skin = new Membrane(nextId('skin'), 'skin');
-  const firstCell = new Membrane(nextId('gen'), 'gen', skin, { d_1: 1, ...rules.initialObjects });
-  objects.forEach(object => {
-    firstCell.addChild(new Membrane(nextId('object'), `object:${object.name}`, firstCell, { ...object.tokens }));
+  const firstCell = new Membrane(nextId('gen'), 'gen', skin, {
+    T_div_select: 1,
+    E_div_count: { receptors: objects.length, bounds: 0 },
+    ...(objects.length === 0 ? { T_eval: 1 } : {})
+  });
+
+  objects.forEach((object, index) => {
+    firstCell.addChild(new Membrane(
+      nextId('object'),
+      `object:${index + 1}:${object.name}`,
+      firstCell,
+      { ...object.tokens, R_div_token: { bound: false, hidden: false } }
+    ));
   });
   skin.children.push(firstCell);
 
-  const itemProperties = [...new Set(items.flatMap(item => Object.keys(item)))];
-  const simulationProperties = modelProperties || itemProperties;
-  const allProperties = [...new Set([
-    ...simulationProperties,
-    ...rules.constraintSpecs.map(spec => spec.property)
-  ])].sort();
-  const history = runDivisionPhase({
-    skin,
-    items: objects.map(object => ({ name: object.name, tokens: object.tokens })),
-    itemNames,
-    nextId
-  });
-  const constraintResult = runConstraintPhase({
-    skin,
-    itemCount: items.length,
-    constraintSpecs: rules.constraintSpecs,
-    bindingRulesByState: rules.bindingRulesByState,
-    checkRulesByState: rules.checkRulesByState,
-    constraintSignalsRule: rules.constraintSignalsRule,
-    acceptRule: rules.acceptRule,
-    deltaObject: rules.deltaObject,
-    history
-  });
+  const history = runDivisionPhase({ skin, nextId, random });
+  const rules = [
+    { name: 'Bind_T_div_select_To_Object_Receptor', type: 'binding' },
+    { name: 'Divide_Object_Into_Included_And_Excluded_Cells', type: 'division' },
+    { name: 'Recreate_T_div_select_And_E_div_count', type: 'cell_creation' },
+    { name: 'Bind_T_div_count_To_E_div_count_Receptor', type: 'binding' },
+    { name: 'Emit_T_eval_When_E_div_count_Is_Full', type: 'signal' }
+  ];
 
-  const solutionRule = constraintResult.solutionRule;
-  const rulesMeta = createDivisionRules(objects);
-  rulesMeta.push(...rules.bindingRules, rules.constraintSignalsRule);
-  rulesMeta.push(...rules.checkRulesByState.values());
-  rulesMeta.push(rules.acceptRule, solutionRule, {
-    name: 'Cell_Dissolution (delta)', type: 'dissolution',
-    lhs: { [rules.deltaObject]: 1 }, rhs: {}, target: 'here', applies_to: 'gen'
-  });
   return {
-    title: `Knapsack - ${items.length} items - ${formatConstraints(constraints)}`,
-    rules: rulesMeta,
+    title: `Knapsack - ${objects.length} objects`,
+    rules,
     steps: history,
-    metadata: {
-      items,
-      itemNames,
-      constraints,
-      properties: allProperties
-    }
+    metadata: { items: objects.map(object => ({ name: object.name, tokens: object.tokens })) }
   };
-}
-
-/** Describes each decision as a pair of object-cell instances. */
-function createDivisionRules(objects) {
-  return objects.map((object, index) => {
-    const number = index + 1;
-    const next = number === objects.length ? 'eval' : `d_${number + 1}`;
-    return {
-      name: `Divide_Item${number}`,
-      type: 'division',
-      trigger: `d_${number}`,
-      daughter_a: { [next]: 1 },
-      daughter_b: { [next]: 1 },
-      object_cell_in: { name: object.name, tokens: { ...object.tokens, in_combination: 1 } },
-      object_cell_out: { name: object.name, tokens: { ...object.tokens, not_in_combination: 1 } },
-      applies_to: 'gen'
-    };
-  });
-}
-
-/** Formats active limits for the simulation title. */
-function formatConstraints(constraints) {
-  return Object.entries(constraints)
-    .map(([property, condition]: [string, any]) => condition.max != null
-      ? `${property}<=${condition.max}`
-      : `${property}>=${condition.min}`)
-    .join(', ');
 }
